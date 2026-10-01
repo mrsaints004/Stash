@@ -1,0 +1,66 @@
+# Dependencies
+node_modules/
+.pnpm-store/
+
+# Build outputs
+dist/
+.next/
+out/
+.turbo/
+*.tsbuildinfo
+
+# Foundry
+contracts/out/
+contracts/cache/
+contracts/broadcast/
+
+# Environment variables
+.env
+.env.local
+.env.*.local
+apps/web/.env
+apps/api/.env
+
+# Keep examples
+!.env.example
+!apps/web/.env.example
+
+# Secrets / deploy scripts with keys
+setup.sh
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*.sublime-project
+*.sublime-workspace
+
+# OS
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# Database
+pgdata/
+*.sql.bak
+
+# Redis
+dump.rdb
+
+# Logs
+*.log
+npm-debug.log*
+pnpm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Test coverage
+coverage/
+.nyc_output/
+
+# Debug
+*.pem
+
+# Claude Code
+.claude/
