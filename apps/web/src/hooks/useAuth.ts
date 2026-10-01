@@ -6,6 +6,7 @@ import { api } from "@/lib/api";
 import type { ApiResponse, AuthChallenge, AuthToken } from "@stash/common";
 
 const TOKEN_KEY = "stash_token";
+const DEMO_MODE = process.env.NEXT_PUBLIC_DEMO_MODE === "true";
 
 export function useAuth() {
   const { address, isConnected } = useAccount();
@@ -13,6 +14,18 @@ export function useAuth() {
   const [token, setToken] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // In demo mode, always authenticated
+  if (DEMO_MODE) {
+    return {
+      isAuthenticated: true,
+      token: "demo",
+      login: async () => {},
+      logout: () => {},
+      isLoading: false,
+      error: null,
+    };
+  }
 
   // Hydrate token from localStorage on mount
   useEffect(() => {

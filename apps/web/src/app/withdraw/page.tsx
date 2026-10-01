@@ -3,10 +3,10 @@
 import { useState, useEffect } from "react";
 import Link from "next/link";
 import {
-  useAccount,
   useWriteContract,
   useWaitForTransactionReceipt,
 } from "wagmi";
+import { useDemoAccount as useAccount } from "@/hooks/useDemoAccount";
 import { Header } from "@/components/layout/Header";
 import { TokenAmount } from "@/components/common/TokenAmount";
 import { RiskBadge } from "@/components/common/RiskBadge";

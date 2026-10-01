@@ -3,11 +3,11 @@
 import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
 import {
-  useAccount,
   useReadContract,
   useWriteContract,
   useWaitForTransactionReceipt,
 } from "wagmi";
+import { useDemoAccount as useAccount } from "@/hooks/useDemoAccount";
 import { Header } from "@/components/layout/Header";
 import { useStashPower } from "@/hooks/useStashPower";
 import { useTrade } from "@/hooks/useTrade";
