@@ -7,6 +7,11 @@ import type { Address } from "viem";
 
 const WETH_ADDRESS = ADDRESSES.WETH as Address;
 const CIRBTC_ADDRESS = ADDRESSES.cirBTC as Address;
+const DEMO_MODE = process.env.NEXT_PUBLIC_DEMO_MODE === "true";
+
+// ~2.5 WETH, ~0.15 cirBTC
+const MOCK_WETH = 2500000000000000000n;
+const MOCK_CIRBTC = 15000000n;
 
 interface TokenBalancesResult {
   wethBalance: bigint;
@@ -34,10 +39,19 @@ export function useTokenBalances(): TokenBalancesResult {
       },
     ],
     query: {
-      enabled: isConnected && !!address,
-      refetchInterval: 15_000,
+      enabled: !DEMO_MODE && isConnected && !!address,
+      refetchInterval: DEMO_MODE ? false : 15_000,
     },
   });
+
+  if (DEMO_MODE) {
+    return {
+      wethBalance: MOCK_WETH,
+      cirBtcBalance: MOCK_CIRBTC,
+      isLoading: false,
+      refetch: () => {},
+    };
+  }
 
   const wethBalance =
     data?.[0]?.status === "success" ? (data[0].result as bigint) : 0n;

@@ -15,20 +15,9 @@ export function useAuth() {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // In demo mode, always authenticated
-  if (DEMO_MODE) {
-    return {
-      isAuthenticated: true,
-      token: "demo",
-      login: async () => {},
-      logout: () => {},
-      isLoading: false,
-      error: null,
-    };
-  }
-
   // Hydrate token from localStorage on mount
   useEffect(() => {
+    if (DEMO_MODE) return;
     if (typeof window !== "undefined") {
       const stored = localStorage.getItem(TOKEN_KEY);
       setToken(stored);
@@ -37,6 +26,7 @@ export function useAuth() {
 
   // Clear token when wallet disconnects
   useEffect(() => {
+    if (DEMO_MODE) return;
     if (!isConnected) {
       setToken(null);
       if (typeof window !== "undefined") {
@@ -46,6 +36,7 @@ export function useAuth() {
   }, [isConnected]);
 
   const login = useCallback(async () => {
+    if (DEMO_MODE) return;
     if (!address || !isConnected) {
       setError("Wallet not connected");
       return;
@@ -55,28 +46,17 @@ export function useAuth() {
     setError(null);
 
     try {
-      // 1. Request challenge from backend
       const challengeRes = await api.post<ApiResponse<AuthChallenge>>(
         "/auth/challenge",
         { address }
       );
       const { message } = challengeRes.data.data;
-
-      // 2. Sign the challenge message with wallet
       const signature = await signMessageAsync({ message });
-
-      // 3. Verify the signature with the backend
       const verifyRes = await api.post<ApiResponse<AuthToken>>(
         "/auth/verify",
-        {
-          address,
-          message,
-          signature,
-        }
+        { address, message, signature }
       );
       const { accessToken } = verifyRes.data.data;
-
-      // 4. Store JWT in localStorage
       localStorage.setItem(TOKEN_KEY, accessToken);
       setToken(accessToken);
     } catch (err: unknown) {
@@ -89,11 +69,24 @@ export function useAuth() {
   }, [address, isConnected, signMessageAsync]);
 
   const logout = useCallback(() => {
+    if (DEMO_MODE) return;
     setToken(null);
     if (typeof window !== "undefined") {
       localStorage.removeItem(TOKEN_KEY);
     }
   }, []);
+
+  // In demo mode, always authenticated (pages use useDemoAccount for isConnected)
+  if (DEMO_MODE) {
+    return {
+      isAuthenticated: true,
+      token: "demo",
+      login,
+      logout,
+      isLoading: false,
+      error: null,
+    };
+  }
 
   return {
     isAuthenticated: !!token,

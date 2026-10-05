@@ -8,7 +8,8 @@ const DEMO_ADDRESS = "0x641b05B3d4256363d9eB79032ad3ff96F2B63202" as const;
 export function useDemoAccount() {
   const account = useAccount();
 
-  if (DEMO_MODE) {
+  if (DEMO_MODE && !account.isConnected) {
+    // Only fake connection when no real wallet is connected
     return {
       ...account,
       address: DEMO_ADDRESS,
@@ -28,5 +29,6 @@ export function useDemoAccount() {
     };
   }
 
+  // Use real wallet state when connected (even in demo mode)
   return account;
 }

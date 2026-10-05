@@ -5,8 +5,9 @@ import { AppModule } from './app.module';
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
 
+  const corsOrigin = process.env.CORS_ORIGIN ?? 'http://localhost:3000';
   app.enableCors({
-    origin: 'http://localhost:3000',
+    origin: corsOrigin,
     credentials: true,
   });
 
@@ -18,8 +19,9 @@ async function bootstrap() {
     }),
   );
 
-  await app.listen(3001);
-  console.log('Stash API running on http://localhost:3001');
+  const port = process.env.PORT ?? 3001;
+  await app.listen(port);
+  console.log(`Stash API running on port ${port}`);
 }
 
 bootstrap();

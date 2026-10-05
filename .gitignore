@@ -24,6 +24,7 @@ apps/api/.env
 # Keep examples
 !.env.example
 !apps/web/.env.example
+!apps/api/.env.example
 
 # Secrets / deploy scripts with keys
 setup.sh

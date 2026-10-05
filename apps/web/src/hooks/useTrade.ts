@@ -2,14 +2,11 @@
 
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useApi } from "./useApi";
+import { ADDRESSES } from "@stash/common";
 import type { ApiResponse, TradeQuote, TradeExecution } from "@stash/common";
 
 const TOKEN_KEY = "stash_token";
-
-function getToken(): string | null {
-  if (typeof window === "undefined") return null;
-  return localStorage.getItem(TOKEN_KEY);
-}
+const DEMO_MODE = process.env.NEXT_PUBLIC_DEMO_MODE === "true";
 
 interface PrepareTradeResponse {
   routerAddress: string;
@@ -37,12 +34,44 @@ interface TradePositionEntry {
   txHash: string;
 }
 
+const MOCK_POSITIONS: TradePositionEntry[] = [
+  {
+    tokenIn: ADDRESSES.USDC,
+    tokenOut: ADDRESSES.WETH,
+    tokenInSymbol: "USDC",
+    tokenOutSymbol: "WETH",
+    amountIn: "1500000000",
+    amountOut: "600000000000000000",
+    status: "confirmed",
+    createdAt: new Date(Date.now() - 86400000).toISOString(),
+    txHash: "0xab12cd34ef56789012345678901234567890abcdef1234567890abcdef123456",
+  },
+  {
+    tokenIn: ADDRESSES.USDC,
+    tokenOut: ADDRESSES.EURC,
+    tokenInSymbol: "USDC",
+    tokenOutSymbol: "EURC",
+    amountIn: "1300000000",
+    amountOut: "1196000000",
+    status: "confirmed",
+    createdAt: new Date(Date.now() - 172800000).toISOString(),
+    txHash: "0xef78901234567890abcdef1234567890abcdef1234567890abcdef1234567890",
+  },
+];
+
+const MOCK_HISTORY: TradeExecution[] = [];
+
+function getToken(): string | null {
+  if (DEMO_MODE) return "demo";
+  if (typeof window === "undefined") return null;
+  return localStorage.getItem(TOKEN_KEY);
+}
+
 export function useTrade() {
   const token = getToken();
   const client = useApi(token);
   const queryClient = useQueryClient();
 
-  // Get quote
   const getQuoteMutation = useMutation({
     mutationFn: async ({
       tokenIn,
@@ -55,6 +84,22 @@ export function useTrade() {
       amountIn: string;
       slippageBps?: number;
     }) => {
+      if (DEMO_MODE) {
+        // Simulate a quote with ~0.5% price impact
+        const bps = slippageBps ?? 100;
+        const amountOut = BigInt(amountIn) * 997n / 1000n;
+        const amountOutMin = amountOut * BigInt(10000 - bps) / 10000n;
+        return {
+          tokenIn,
+          tokenOut,
+          amountIn,
+          amountOutMin: amountOutMin.toString(),
+          priceImpact: 0.005,
+          slippageBps: bps,
+          route: [tokenIn, tokenOut],
+          expiresAt: new Date(Date.now() + 300000).toISOString(),
+        } as TradeQuote;
+      }
       const res = await client.post<ApiResponse<TradeQuote>>("/trade/quote", {
         tokenIn,
         tokenOut,
@@ -65,7 +110,6 @@ export function useTrade() {
     },
   });
 
-  // Prepare trade
   const prepareTradeMutation = useMutation({
     mutationFn: async ({
       tokenIn,
@@ -78,6 +122,16 @@ export function useTrade() {
       amountIn: string;
       slippageBps?: number;
     }) => {
+      if (DEMO_MODE) {
+        return {
+          routerAddress: process.env.NEXT_PUBLIC_STASH_ROUTER_ADDRESS ?? "",
+          tokenIn,
+          tokenOut,
+          amountIn,
+          amountOutMin: "0",
+          calldata: "0x",
+        } as PrepareTradeResponse;
+      }
       const res = await client.post<ApiResponse<PrepareTradeResponse>>(
         "/trade/prepare",
         { tokenIn, tokenOut, amountIn, slippageBps }
@@ -86,7 +140,6 @@ export function useTrade() {
     },
   });
 
-  // Confirm trade
   const confirmTradeMutation = useMutation({
     mutationFn: async ({
       txHash,
@@ -101,6 +154,9 @@ export function useTrade() {
       amountIn: string;
       amountOut: string;
     }) => {
+      if (DEMO_MODE) {
+        return { success: true, tradeId: "demo-trade-1" } as ConfirmTradeResponse;
+      }
       const res = await client.post<ApiResponse<ConfirmTradeResponse>>(
         "/trade/confirm",
         { txHash, tokenIn, tokenOut, amountIn, amountOut }
@@ -114,7 +170,6 @@ export function useTrade() {
     },
   });
 
-  // Trade history
   const {
     data: tradeHistory,
     isLoading: isHistoryLoading,
@@ -122,16 +177,16 @@ export function useTrade() {
   } = useQuery({
     queryKey: ["trade-history", token],
     queryFn: async () => {
+      if (DEMO_MODE) return MOCK_HISTORY;
       const res = await client.get<ApiResponse<TradeExecution[]>>(
         "/trade/history"
       );
       return res.data.data;
     },
     enabled: !!token,
-    retry: 1,
+    retry: DEMO_MODE ? false : 1,
   });
 
-  // Active positions
   const {
     data: activePositions,
     isLoading: isPositionsLoading,
@@ -139,13 +194,14 @@ export function useTrade() {
   } = useQuery({
     queryKey: ["trade-positions", token],
     queryFn: async () => {
+      if (DEMO_MODE) return MOCK_POSITIONS;
       const res = await client.get<ApiResponse<TradePositionEntry[]>>(
         "/trade/positions"
       );
       return res.data.data;
     },
     enabled: !!token,
-    retry: 1,
+    retry: DEMO_MODE ? false : 1,
   });
 
   const getQuote = (
@@ -193,10 +249,10 @@ export function useTrade() {
     isPreparing: prepareTradeMutation.isPending,
     isConfirming: confirmTradeMutation.isPending,
     tradeHistory: tradeHistory ?? [],
-    isHistoryLoading,
+    isHistoryLoading: DEMO_MODE ? false : isHistoryLoading,
     refetchHistory,
     activePositions: activePositions ?? [],
-    isPositionsLoading,
+    isPositionsLoading: DEMO_MODE ? false : isPositionsLoading,
     refetchPositions,
   };
 }

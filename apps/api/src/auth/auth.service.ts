@@ -26,13 +26,17 @@ export class AuthService {
     const nonce = generateNonce();
     const expiresAt = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
 
+    const domain = process.env.SIWE_DOMAIN ?? 'localhost:3000';
+    const uri = process.env.SIWE_URI ?? 'http://localhost:3000';
+    const chainId = Number(process.env.ARC_CHAIN_ID ?? 5042002);
+
     const message = new SiweMessage({
-      domain: 'localhost:3000',
+      domain,
       address,
       statement: 'Sign in to Stash',
-      uri: 'http://localhost:3000',
+      uri,
       version: '1',
-      chainId: 5042002,
+      chainId,
       nonce,
       expirationTime: expiresAt.toISOString(),
     });
