@@ -6,10 +6,20 @@ import { truncateAddress } from "@stash/common";
 
 export function ConnectButton() {
   const { address, isConnected } = useAccount();
-  const { connect, connectors, isPending } = useConnect();
+  const { connect, connectors, isPending, error: connectError } = useConnect();
   const { disconnect } = useDisconnect();
   const [menuOpen, setMenuOpen] = useState(false);
+  const [showError, setShowError] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
+
+  // Show error briefly then hide
+  useEffect(() => {
+    if (connectError) {
+      setShowError(true);
+      const timer = setTimeout(() => setShowError(false), 4000);
+      return () => clearTimeout(timer);
+    }
+  }, [connectError]);
 
   // Close menu on outside click
   useEffect(() => {
@@ -24,16 +34,28 @@ export function ConnectButton() {
 
   if (!isConnected) {
     return (
-      <button
-        onClick={() => {
-          const connector = connectors[0];
-          if (connector) connect({ connector });
-        }}
-        disabled={isPending}
-        className="rounded-lg bg-stash-gold px-4 py-2 text-sm font-medium text-stash-bg hover:bg-stash-gold-light transition-colors disabled:opacity-50"
-      >
-        {isPending ? "Connecting..." : "Connect Wallet"}
-      </button>
+      <div className="relative">
+        <button
+          onClick={() => {
+            setShowError(false);
+            const connector = connectors.find((c) => c.name === "MetaMask") ?? connectors[0];
+            if (connector) connect({ connector });
+          }}
+          disabled={isPending}
+          className="rounded-lg bg-stash-gold px-4 py-2 text-sm font-medium text-stash-bg hover:bg-stash-gold-light transition-colors disabled:opacity-50"
+        >
+          {isPending ? "Connecting..." : "Connect Wallet"}
+        </button>
+        {showError && connectError && (
+          <div className="absolute right-0 top-full mt-2 w-64 rounded-lg border border-stash-red/20 bg-stash-surface p-3 shadow-lg shadow-black/40 z-50">
+            <p className="text-xs text-stash-red">
+              {connectError.message.includes("provider")
+                ? "MetaMask not found. Please install MetaMask to connect."
+                : "Connection failed. Please try again."}
+            </p>
+          </div>
+        )}
+      </div>
     );
   }
 

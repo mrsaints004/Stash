@@ -21,7 +21,9 @@ export const arcTestnet: Chain = {
 
 export const config = createConfig({
   chains: [arcTestnet],
-  connectors: [injected()],
+  connectors: [
+    injected({ target: "metaMask" }),
+  ],
   transports: {
     [arcTestnet.id]: http(),
   },
