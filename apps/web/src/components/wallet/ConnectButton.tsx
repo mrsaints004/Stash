@@ -4,12 +4,6 @@ import { useAccount, useConnect, useDisconnect } from "wagmi";
 import { useState, useRef, useEffect } from "react";
 import { truncateAddress } from "@stash/common";
 
-// Non-EVM extensions that inject providers but aren't real EVM wallets
-const IGNORED_CONNECTORS = new Set([
-  "com.namada",
-  "xverse",
-]);
-
 export function ConnectButton() {
   const { address, isConnected } = useAccount();
   const { connect, connectors, isPending, error: connectError } = useConnect();
@@ -20,10 +14,14 @@ export function ConnectButton() {
   const menuRef = useRef<HTMLDivElement>(null);
   const pickerRef = useRef<HTMLDivElement>(null);
 
-  // Filter to real EVM wallets only
-  const evmConnectors = connectors.filter(
-    (c) => !IGNORED_CONNECTORS.has(c.id) && !IGNORED_CONNECTORS.has(c.name.toLowerCase())
-  );
+  // Only show EIP-6963 announced wallets (type === "announced") or well-known injected
+  const walletConnectors = connectors.filter((c) => {
+    // EIP-6963 wallets announce themselves with proper metadata
+    if (c.type === "announced") return true;
+    // Also allow the generic injected if it's the only option (fallback for MetaMask)
+    if (c.type === "injected" && c.name !== "Injected") return true;
+    return false;
+  });
 
   // Show error briefly
   useEffect(() => {
@@ -54,12 +52,15 @@ export function ConnectButton() {
         <button
           onClick={() => {
             setShowError(false);
-            // If only one EVM connector, connect directly
-            if (evmConnectors.length <= 1) {
-              const connector = evmConnectors[0] ?? connectors[0];
-              if (connector) connect({ connector });
-            } else {
+            if (walletConnectors.length === 1) {
+              connect({ connector: walletConnectors[0] });
+            } else if (walletConnectors.length > 1) {
               setPickerOpen(!pickerOpen);
+            } else {
+              // No wallets detected — try generic injected as last resort
+              const fallback = connectors.find((c) => c.type === "injected");
+              if (fallback) connect({ connector: fallback });
+              else setShowError(true);
             }
           }}
           disabled={isPending}
@@ -68,26 +69,34 @@ export function ConnectButton() {
           {isPending ? "Connecting..." : "Connect Wallet"}
         </button>
 
-        {/* Wallet picker dropdown */}
-        {pickerOpen && !isPending && (
-          <div className="absolute right-0 mt-2 w-56 rounded-lg border border-stash-border bg-stash-surface shadow-lg shadow-black/40 z-50">
-            <div className="px-3 py-2 border-b border-stash-border">
+        {/* Wallet picker */}
+        {pickerOpen && !isPending && walletConnectors.length > 1 && (
+          <div className="absolute right-0 mt-2 w-56 rounded-lg border border-stash-border bg-stash-surface shadow-lg shadow-black/40 z-50 overflow-hidden">
+            <div className="px-3 py-2.5 border-b border-stash-border">
               <div className="text-[11px] text-stash-muted uppercase tracking-wider font-medium">
                 Select Wallet
               </div>
             </div>
-            {evmConnectors.map((connector) => (
+            {walletConnectors.map((connector) => (
               <button
                 key={connector.uid}
                 onClick={() => {
                   connect({ connector });
                   setPickerOpen(false);
                 }}
-                className="w-full flex items-center gap-3 px-3 py-2.5 text-left text-sm text-stash-text hover:bg-stash-surface-2 transition-colors last:rounded-b-lg"
+                className="w-full flex items-center gap-3 px-3 py-2.5 text-left text-sm text-stash-text hover:bg-stash-surface-2 transition-colors"
               >
-                <span className="flex h-6 w-6 items-center justify-center rounded-md bg-stash-bg border border-stash-border text-[10px] font-bold text-stash-muted">
-                  {connector.name.charAt(0)}
-                </span>
+                {connector.icon ? (
+                  <img
+                    src={connector.icon}
+                    alt={connector.name}
+                    className="h-6 w-6 rounded-md"
+                  />
+                ) : (
+                  <span className="flex h-6 w-6 items-center justify-center rounded-md bg-stash-bg border border-stash-border text-[10px] font-bold text-stash-muted">
+                    {connector.name.charAt(0)}
+                  </span>
+                )}
                 {connector.name}
               </button>
             ))}
@@ -95,12 +104,12 @@ export function ConnectButton() {
         )}
 
         {/* Error tooltip */}
-        {showError && connectError && (
+        {showError && (
           <div className="absolute right-0 top-full mt-2 w-64 rounded-lg border border-stash-red/20 bg-stash-surface p-3 shadow-lg shadow-black/40 z-50">
             <p className="text-xs text-stash-red">
-              {connectError.message.includes("provider") || connectError.message.includes("not found")
-                ? "No compatible wallet found. Please install MetaMask or Rabby."
-                : "Connection failed. Please try again."}
+              {connectError
+                ? "Connection failed. Please try again."
+                : "No wallet detected. Install MetaMask or Rabby to connect."}
             </p>
           </div>
         )}

@@ -1,5 +1,4 @@
 import { http, createConfig } from "wagmi";
-import { injected } from "wagmi/connectors";
 import { type Chain } from "viem";
 
 export const arcTestnet: Chain = {
@@ -19,11 +18,14 @@ export const arcTestnet: Chain = {
   testnet: true,
 };
 
+// No connectors array — wagmi auto-discovers wallets via EIP-6963.
+// Only real EVM wallets (MetaMask, Rabby, Coinbase, Trust, etc.)
+// announce themselves through EIP-6963. Non-EVM extensions are excluded.
 export const config = createConfig({
   chains: [arcTestnet],
-  connectors: [injected()],
   transports: {
     [arcTestnet.id]: http(),
   },
   ssr: true,
+  multiInjectedProviderDiscovery: true,
 });
