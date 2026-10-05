@@ -4,15 +4,28 @@ import { useAccount, useConnect, useDisconnect } from "wagmi";
 import { useState, useRef, useEffect } from "react";
 import { truncateAddress } from "@stash/common";
 
+// Non-EVM extensions that inject providers but aren't real EVM wallets
+const IGNORED_CONNECTORS = new Set([
+  "com.namada",
+  "xverse",
+]);
+
 export function ConnectButton() {
   const { address, isConnected } = useAccount();
   const { connect, connectors, isPending, error: connectError } = useConnect();
   const { disconnect } = useDisconnect();
   const [menuOpen, setMenuOpen] = useState(false);
+  const [pickerOpen, setPickerOpen] = useState(false);
   const [showError, setShowError] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
+  const pickerRef = useRef<HTMLDivElement>(null);
 
-  // Show error briefly then hide
+  // Filter to real EVM wallets only
+  const evmConnectors = connectors.filter(
+    (c) => !IGNORED_CONNECTORS.has(c.id) && !IGNORED_CONNECTORS.has(c.name.toLowerCase())
+  );
+
+  // Show error briefly
   useEffect(() => {
     if (connectError) {
       setShowError(true);
@@ -21,11 +34,14 @@ export function ConnectButton() {
     }
   }, [connectError]);
 
-  // Close menu on outside click
+  // Close menus on outside click
   useEffect(() => {
     function handleClick(e: MouseEvent) {
       if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
         setMenuOpen(false);
+      }
+      if (pickerRef.current && !pickerRef.current.contains(e.target as Node)) {
+        setPickerOpen(false);
       }
     }
     document.addEventListener("mousedown", handleClick);
@@ -34,23 +50,56 @@ export function ConnectButton() {
 
   if (!isConnected) {
     return (
-      <div className="relative">
+      <div className="relative" ref={pickerRef}>
         <button
           onClick={() => {
             setShowError(false);
-            const connector = connectors.find((c) => c.name === "MetaMask") ?? connectors[0];
-            if (connector) connect({ connector });
+            // If only one EVM connector, connect directly
+            if (evmConnectors.length <= 1) {
+              const connector = evmConnectors[0] ?? connectors[0];
+              if (connector) connect({ connector });
+            } else {
+              setPickerOpen(!pickerOpen);
+            }
           }}
           disabled={isPending}
           className="rounded-lg bg-stash-gold px-4 py-2 text-sm font-medium text-stash-bg hover:bg-stash-gold-light transition-colors disabled:opacity-50"
         >
           {isPending ? "Connecting..." : "Connect Wallet"}
         </button>
+
+        {/* Wallet picker dropdown */}
+        {pickerOpen && !isPending && (
+          <div className="absolute right-0 mt-2 w-56 rounded-lg border border-stash-border bg-stash-surface shadow-lg shadow-black/40 z-50">
+            <div className="px-3 py-2 border-b border-stash-border">
+              <div className="text-[11px] text-stash-muted uppercase tracking-wider font-medium">
+                Select Wallet
+              </div>
+            </div>
+            {evmConnectors.map((connector) => (
+              <button
+                key={connector.uid}
+                onClick={() => {
+                  connect({ connector });
+                  setPickerOpen(false);
+                }}
+                className="w-full flex items-center gap-3 px-3 py-2.5 text-left text-sm text-stash-text hover:bg-stash-surface-2 transition-colors last:rounded-b-lg"
+              >
+                <span className="flex h-6 w-6 items-center justify-center rounded-md bg-stash-bg border border-stash-border text-[10px] font-bold text-stash-muted">
+                  {connector.name.charAt(0)}
+                </span>
+                {connector.name}
+              </button>
+            ))}
+          </div>
+        )}
+
+        {/* Error tooltip */}
         {showError && connectError && (
           <div className="absolute right-0 top-full mt-2 w-64 rounded-lg border border-stash-red/20 bg-stash-surface p-3 shadow-lg shadow-black/40 z-50">
             <p className="text-xs text-stash-red">
-              {connectError.message.includes("provider")
-                ? "MetaMask not found. Please install MetaMask to connect."
+              {connectError.message.includes("provider") || connectError.message.includes("not found")
+                ? "No compatible wallet found. Please install MetaMask or Rabby."
                 : "Connection failed. Please try again."}
             </p>
           </div>
