@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { useDemoAccount as useAccount } from "@/hooks/useDemoAccount";
+import { useAccount } from "wagmi";
 import { Header } from "@/components/layout/Header";
 import { TokenAmount } from "@/components/common/TokenAmount";
 import { RiskBadge } from "@/components/common/RiskBadge";
@@ -34,10 +34,12 @@ export default function PositionsPage() {
     ltv,
     riskLevel,
     isLoading: powerLoading,
+    error: powerError,
   } = useStashPower();
   const {
     positions,
     isLoading: positionsLoading,
+    error: positionsError,
   } = useCollateral();
   const {
     activePositions,
@@ -98,6 +100,8 @@ export default function PositionsPage() {
     { id: "credit", label: "Credit" },
     { id: "trades", label: "Trades" },
   ];
+
+  if (powerError || positionsError) return <div className="min-h-screen bg-stash-bg"><Header /><main className="mx-auto max-w-4xl p-8"><p role="alert" className="text-stash-red">Position and risk data are unavailable. Refresh when the connection recovers.</p><Link href="/repay" className="mt-4 inline-block text-stash-gold">Repay debt</Link></main></div>;
 
   return (
     <div className="min-h-screen bg-stash-bg">

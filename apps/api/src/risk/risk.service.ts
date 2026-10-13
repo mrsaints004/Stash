@@ -42,33 +42,14 @@ export class RiskService {
   ) {}
 
   async checkRisk(userId: string): Promise<RiskSnapshot> {
-    // Calculate total collateral USD
-    const positions = await this.collateralRepo.find({
-      where: { userId },
-    });
-
-    let totalCollateralUsd = 0;
-    for (const position of positions) {
-      const symbol = ASSET_SYMBOLS[position.assetAddress.toLowerCase()];
-      if (!symbol) continue;
-      const decimals = ASSET_DECIMALS[position.assetAddress.toLowerCase()];
-      if (decimals === undefined) continue;
-      const priceUsd = await this.oracleService.getPrice(symbol);
-      const amount = Number(BigInt(position.amount)) / 10 ** decimals;
-      totalCollateralUsd += amount * priceUsd;
-    }
-
-    // Get debt
-    const creditPosition =
-      await this.creditService.getOrCreateCreditPosition(userId);
-    const totalDebtUsd = Number(creditPosition.debtAmount);
-
-    // Calculate LTV
-    const ltv =
-      totalCollateralUsd > 0 ? totalDebtUsd / totalCollateralUsd : 0;
+    const state = await this.creditService.calculateStashPower(userId);
+    const totalCollateralUsd = state.totalCollateralUsd;
+    const totalDebtUsd = state.debtAmount;
+    const ltv = state.ltv;
 
     // Determine risk level
-    const riskLevel = this.determineRiskLevel(ltv);
+    const health = Number(state.healthFactor) / 1e18;
+    const riskLevel: RiskLevel = totalDebtUsd === 0 ? 'safe' : health <= 1 ? 'liquidation' : health <= 1.1 ? 'danger' : health <= 1.25 ? 'warning' : 'safe';
 
     // Create risk snapshot
     const snapshot = this.riskSnapshotRepo.create({

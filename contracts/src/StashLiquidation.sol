@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.28;
+// Legacy V1 retained for regression tests. Not a supported Arc deployment; use src/v2/.
 
 import {IERC20} from "forge-std/interfaces/IERC20.sol";
 import {IStashVault} from "./interfaces/IStashVault.sol";

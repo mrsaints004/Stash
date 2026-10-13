@@ -1,6 +1,9 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.28;
+// Legacy V1 retained for regression tests. Not a supported Arc deployment; use src/v2/.
 
+import {StashPausable} from "./StashPausable.sol";
+import {SafeToken} from "./libraries/SafeToken.sol";
 import {IERC20} from "forge-std/interfaces/IERC20.sol";
 import {IStashCredit} from "./interfaces/IStashCredit.sol";
 import {IStashVault} from "./interfaces/IStashVault.sol";
@@ -12,8 +15,10 @@ import {StashEvents} from "./libraries/StashEvents.sol";
 /// @notice Borrows USDC from Aave V4 against deposited collateral in StashVault.
 ///         Users can borrow up to their available credit (collateral * LTV - existing debt).
 ///         Repayment reduces outstanding debt. The vault's Aave position backs all borrows.
-contract StashCredit is IStashCredit {
-    address public owner;
+interface IVaultRisk { function borrowingCapacity(address user) external view returns (uint256); }
+
+contract StashCredit is IStashCredit, StashPausable {
+    using SafeToken for address;
     IAaveV4Spoke public aaveSpoke;
     IStashVault public stashVault;
     IERC20 public usdc;
@@ -31,13 +36,7 @@ contract StashCredit is IStashCredit {
     /// @dev total USDC debt across all users
     uint256 public totalDebt;
 
-    modifier onlyOwner() {
-        if (msg.sender != owner) revert StashErrors.NotOwner();
-        _;
-    }
-
     constructor(address _aaveSpoke, address _stashVault, address _usdc) {
-        owner = msg.sender;
         aaveSpoke = IAaveV4Spoke(_aaveSpoke);
         stashVault = IStashVault(_stashVault);
         usdc = IERC20(_usdc);
@@ -45,21 +44,12 @@ contract StashCredit is IStashCredit {
 
     /// @notice Borrow USDC against deposited collateral
     /// @param amount The USDC amount to borrow (6 decimals)
-    function borrow(uint256 amount) external override {
+    function borrow(uint256 amount) external override whenNotPaused nonReentrant {
         if (amount == 0) revert StashErrors.ZeroAmount();
 
-        // Check available credit from Aave's perspective
-        (, , uint256 availableBorrowsBase, , ,) =
-            aaveSpoke.getUserAccountData(address(stashVault));
-
-        // availableBorrowsBase is in base currency (8 decimals from Aave)
-        // We need to check that the user's share allows this borrow
-        uint256 userDebt = _debts[msg.sender];
-        uint256 newDebt = userDebt + amount;
-
-        // Simple credit check: user's new debt can't exceed their share of available borrows
-        // In production, this would use per-user collateral valuation
-        // For now, we verify the vault can handle the total debt increase
+        uint256 available = availableCredit(msg.sender);
+        if (amount > available) revert StashErrors.InsufficientCredit(msg.sender, amount, available);
+        uint256 newDebt = _debts[msg.sender] + amount;
         uint256 newTotalDebt = totalDebt + amount;
 
         // Borrow USDC from Aave V4 on behalf of the vault
@@ -77,7 +67,7 @@ contract StashCredit is IStashCredit {
         totalDebt = newTotalDebt;
 
         // Transfer borrowed USDC to the user
-        usdc.transfer(msg.sender, amount);
+        address(usdc).safeTransfer(msg.sender, amount);
 
         emit Borrowed(msg.sender, amount);
         emit StashEvents.CreditBorrowed(msg.sender, amount);
@@ -85,7 +75,7 @@ contract StashCredit is IStashCredit {
 
     /// @notice Repay outstanding USDC debt
     /// @param amount The USDC amount to repay (6 decimals, type(uint256).max for full)
-    function repay(uint256 amount) external override {
+    function repay(uint256 amount) external override nonReentrant {
         uint256 userDebt = _debts[msg.sender];
         if (userDebt == 0) revert StashErrors.ZeroAmount();
 
@@ -101,10 +91,10 @@ contract StashCredit is IStashCredit {
         if (repayAmount == 0) revert StashErrors.ZeroAmount();
 
         // Transfer USDC from user to this contract
-        usdc.transferFrom(msg.sender, address(this), repayAmount);
+        address(usdc).safeTransferFrom(msg.sender, address(this), repayAmount);
 
         // Approve Aave Spoke to pull the USDC
-        usdc.approve(address(aaveSpoke), repayAmount);
+        address(usdc).forceApprove(address(aaveSpoke), repayAmount);
 
         // Repay Aave V4 debt on behalf of the vault
         aaveSpoke.repay(
@@ -128,15 +118,8 @@ contract StashCredit is IStashCredit {
     }
 
     /// @notice Get user's available borrow capacity
-    function availableCredit(address user) external view override returns (uint256) {
-        (, , uint256 availableBorrowsBase, , ,) =
-            aaveSpoke.getUserAccountData(address(stashVault));
-
-        uint256 userDebt = _debts[user];
-
-        // If the vault has available borrows and user has no/low debt, they can borrow
-        // This is a simplified model — full implementation would use per-user collateral
-        if (availableBorrowsBase <= userDebt) return 0;
-        return availableBorrowsBase - userDebt;
+    function availableCredit(address user) public view override returns (uint256) {
+        uint256 capacity = IVaultRisk(address(stashVault)).borrowingCapacity(user);
+        return capacity > _debts[user] ? capacity - _debts[user] : 0;
     }
 }

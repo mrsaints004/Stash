@@ -1,3 +1,7 @@
+import { LifecycleService } from '../lifecycle/lifecycle.service';
+import { ProtocolService } from '../protocol/protocol.service';
+import { PROTOCOL_EVENTS } from '../blockchain/events';
+import { recordConfirmedAction } from '../blockchain/confirmed-action';
 import {
   Injectable,
   BadRequestException,
@@ -89,6 +93,8 @@ export class CollateralService {
     private readonly blockchainService: BlockchainService,
     private readonly configService: ConfigService,
     private readonly creditService: CreditService,
+    private readonly protocol: ProtocolService,
+    private readonly lifecycle: LifecycleService,
   ) {
     this.vaultAddress = this.configService.get<string>(
       'STASH_VAULT_ADDRESS',
@@ -103,10 +109,10 @@ export class CollateralService {
     amount: string,
   ) {
     const normalizedAsset = assetAddress.toLowerCase();
-    const collateralInfo = SUPPORTED_COLLATERAL[normalizedAsset];
-    if (!collateralInfo) {
+    const collateralInfo = (await this.protocol.configuration()).assets.find(asset => asset.address.toLowerCase() === normalizedAsset);
+    if (!collateralInfo || !collateralInfo.depositsEnabled) {
       throw new BadRequestException(
-        'Unsupported collateral asset. Only WETH and cirBTC are accepted.',
+        'Unsupported collateral asset',
       );
     }
 
@@ -143,8 +149,12 @@ export class CollateralService {
       requiresApproval = true;
     }
 
+    const intentId = await this.lifecycle.prepare(userId, walletAddress, 'deposit', { to: this.vaultAddress, data: depositData });
     return {
+      intentId,
+      vaultAddress: this.vaultAddress,
       to: this.vaultAddress,
+      calldata: depositData,
       data: depositData,
       requiresApproval,
       approvalTo: assetAddress,
@@ -160,56 +170,31 @@ export class CollateralService {
     amount: string,
   ) {
     const normalizedAsset = assetAddress.toLowerCase();
-    const collateralInfo = SUPPORTED_COLLATERAL[normalizedAsset];
-    if (!collateralInfo) {
-      throw new BadRequestException('Unsupported collateral asset');
-    }
-
-    // Record transaction
-    const transaction = this.transactionRepo.create({
-      userId,
-      type: 'deposit',
-      txHash,
-      status: 'confirmed',
-      chainId: ARC_CHAIN_ID,
-      confirmedAt: new Date(),
-    });
-    await this.transactionRepo.save(transaction);
-
-    // Update or create collateral position
-    let position = await this.collateralRepo.findOne({
-      where: { userId, assetAddress: normalizedAsset },
-    });
-
-    if (position) {
-      const currentAmount = BigInt(position.amount);
-      const depositAmount = BigInt(amount);
-      position.amount = (currentAmount + depositAmount).toString();
+    const info = (await this.protocol.configuration()).assets.find(asset => asset.address.toLowerCase() === normalizedAsset);
+    if (!info) throw new BadRequestException('Unsupported collateral asset');
+    await this.blockchainService.verifyEvent(txHash, walletAddress, this.vaultAddress,
+      PROTOCOL_EVENTS, 'Deposited', { user: walletAddress, asset: assetAddress, amount });
+    return recordConfirmedAction(this.transactionRepo, userId, txHash, 'deposit', Number(this.configService.get<string>('CHAIN_ID', '5042002')), async manager => {
+      const repo = manager.getRepository(CollateralPosition);
+      let position = await repo.findOne({ where: { userId, assetAddress: normalizedAsset } });
+      if (!position) position = repo.create({ userId, walletAddress, assetSymbol: info.symbol,
+        assetAddress: normalizedAsset, amount: '0', usdValue: '0.00' });
+      const next = await this.blockchainService.getClient().readContract({ address: this.vaultAddress, abi: VAULT_ABI, functionName: 'balanceOf', args: [walletAddress as Address, assetAddress as Address] });
+      position.amount = next.toString();
       position.walletAddress = walletAddress;
-    } else {
-      position = this.collateralRepo.create({
-        userId,
-        walletAddress,
-        assetSymbol: collateralInfo.symbol,
-        assetAddress: normalizedAsset,
-        amount,
-        usdValue: '0.00',
-      });
-    }
-
-    await this.collateralRepo.save(position);
-
-    return { position, transaction };
+      await repo.save(position);
+      return { position };
+    });
   }
 
   async prepareWithdraw(
     userId: string,
-    _walletAddress: string,
+    walletAddress: string,
     assetAddress: string,
     amount: string,
   ) {
     const normalizedAsset = assetAddress.toLowerCase();
-    const collateralInfo = SUPPORTED_COLLATERAL[normalizedAsset];
+    const collateralInfo = (await this.protocol.configuration()).assets.find(asset => asset.address.toLowerCase() === normalizedAsset);
     if (!collateralInfo) {
       throw new BadRequestException('Unsupported collateral asset');
     }
@@ -219,60 +204,12 @@ export class CollateralService {
       throw new BadRequestException('Amount must be greater than 0');
     }
 
-    // Check user has enough collateral
-    const position = await this.collateralRepo.findOne({
-      where: { userId, assetAddress: normalizedAsset },
-    });
-
-    if (!position) {
-      throw new NotFoundException('No collateral position found for this asset');
-    }
-
-    const currentAmount = BigInt(position.amount);
-    if (currentAmount < parsedAmount) {
-      throw new BadRequestException(
-        'Insufficient collateral balance for withdrawal',
-      );
-    }
-
-    // Check LTV won't breach after withdrawal
-    // Get all positions for user to calculate total collateral
-    const allPositions = await this.collateralRepo.find({
-      where: { userId },
-    });
-
-    const remainingUsdAfterWithdraw = allPositions.reduce((total, pos) => {
-      if (pos.assetAddress === normalizedAsset) {
-        // For the asset being withdrawn, calculate reduced value
-        const remaining = currentAmount - parsedAmount;
-        if (remaining === 0n) return total;
-        const ratio =
-          Number(remaining) / Number(currentAmount);
-        return total + Number(pos.usdValue) * ratio;
-      }
-      return total + Number(pos.usdValue);
-    }, 0);
-
-    // Check if there's any debt that would cause LTV breach
-    const debt = await this.creditService.getDebt(userId);
-    const debtAmount = Number(debt.debtAmount);
-
-    if (debtAmount > 0 && remainingUsdAfterWithdraw > 0) {
-      const projectedLtv = debtAmount / remainingUsdAfterWithdraw;
-      if (projectedLtv > LTV_MAX) {
-        throw new BadRequestException('Withdrawal would breach LTV limit');
-      }
-    } else if (debtAmount > 0 && remainingUsdAfterWithdraw <= 0) {
-      throw new BadRequestException('Withdrawal would breach LTV limit');
-    }
-
-    if (remainingUsdAfterWithdraw < 0) {
-      throw new BadRequestException(
-        'Withdrawal would result in negative collateral',
-      );
-    }
-
-    const maxBorrowable = remainingUsdAfterWithdraw * LTV_MAX;
+    const client = this.blockchainService.getClient();
+    const balance = await client.readContract({ address: this.vaultAddress, abi: VAULT_ABI,
+      functionName: 'balanceOf', args: [walletAddress as Address, assetAddress as Address] });
+    if (parsedAmount > balance) throw new BadRequestException('Insufficient collateral balance for withdrawal');
+    await client.simulateContract({ address: this.vaultAddress, abi: VAULT_ABI,
+      functionName: 'withdraw', args: [assetAddress as Address, parsedAmount], account: walletAddress as Address });
 
     const withdrawData = encodeFunctionData({
       abi: VAULT_ABI,
@@ -280,10 +217,13 @@ export class CollateralService {
       args: [assetAddress as Address, parsedAmount],
     });
 
+    const intentId = await this.lifecycle.prepare(userId, walletAddress, 'withdraw', { to: this.vaultAddress, data: withdrawData });
     return {
+      intentId,
+      vaultAddress: this.vaultAddress,
       to: this.vaultAddress,
+      calldata: withdrawData,
       data: withdrawData,
-      maxBorrowableAfterWithdraw: maxBorrowable.toFixed(2),
     };
   }
 
@@ -295,55 +235,25 @@ export class CollateralService {
     amount: string,
   ) {
     const normalizedAsset = assetAddress.toLowerCase();
-    const collateralInfo = SUPPORTED_COLLATERAL[normalizedAsset];
-    if (!collateralInfo) {
-      throw new BadRequestException('Unsupported collateral asset');
-    }
-
-    // Record transaction
-    const transaction = this.transactionRepo.create({
-      userId,
-      type: 'withdraw',
-      txHash,
-      status: 'confirmed',
-      chainId: ARC_CHAIN_ID,
-      confirmedAt: new Date(),
+    const info = (await this.protocol.configuration()).assets.find(asset => asset.address.toLowerCase() === normalizedAsset);
+    if (!info) throw new BadRequestException('Unsupported collateral asset');
+    await this.blockchainService.verifyEvent(txHash, walletAddress, this.vaultAddress,
+      PROTOCOL_EVENTS, 'Withdrawn', { user: walletAddress, asset: assetAddress, amount });
+    return recordConfirmedAction(this.transactionRepo, userId, txHash, 'withdraw', Number(this.configService.get<string>('CHAIN_ID', '5042002')), async manager => {
+      const repo = manager.getRepository(CollateralPosition);
+      let position = await repo.findOne({ where: { userId, assetAddress: normalizedAsset } });
+      if (!position) position = repo.create({ userId, walletAddress, assetSymbol: info.symbol,
+        assetAddress: normalizedAsset, amount: '0', usdValue: '0.00' });
+      const next = await this.blockchainService.getClient().readContract({ address: this.vaultAddress, abi: VAULT_ABI, functionName: 'balanceOf', args: [walletAddress as Address, assetAddress as Address] });
+      position.amount = next.toString();
+      position.walletAddress = walletAddress;
+      await repo.save(position);
+      return { position };
     });
-    await this.transactionRepo.save(transaction);
-
-    // Update collateral position
-    const position = await this.collateralRepo.findOne({
-      where: { userId, assetAddress: normalizedAsset },
-    });
-
-    if (!position) {
-      throw new NotFoundException('No collateral position found for this asset');
-    }
-
-    const currentAmount = BigInt(position.amount);
-    const withdrawAmount = BigInt(amount);
-    const remaining = currentAmount - withdrawAmount;
-
-    if (remaining < 0n) {
-      throw new BadRequestException('Withdraw amount exceeds position balance');
-    }
-
-    position.amount = remaining.toString();
-    position.walletAddress = walletAddress;
-    await this.collateralRepo.save(position);
-
-    return { position, transaction };
   }
 
   async getPositions(userId: string) {
-    return this.collateralRepo.find({
-      where: { userId },
-    });
+    return (await this.creditService.calculateStashPower(userId)).collateralPositions;
   }
-
-  async getPositionsForUser(userId: string): Promise<CollateralPosition[]> {
-    return this.collateralRepo.find({
-      where: { userId },
-    });
-  }
+  async getPositionsForUser(userId: string) { return this.getPositions(userId); }
 }

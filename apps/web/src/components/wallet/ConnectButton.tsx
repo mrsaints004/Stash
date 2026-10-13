@@ -14,12 +14,16 @@ export function ConnectButton() {
   const menuRef = useRef<HTMLDivElement>(null);
   const pickerRef = useRef<HTMLDivElement>(null);
 
-  // Only show EIP-6963 announced wallets (type === "announced") or well-known injected
+  // Deduplicate: EIP-6963 announced wallets take priority over generic connectors.
+  // Show announced wallets, Coinbase Wallet SDK, and named injected wallets.
+  const seen = new Set<string>();
   const walletConnectors = connectors.filter((c) => {
     // EIP-6963 wallets announce themselves with proper metadata
-    if (c.type === "announced") return true;
-    // Also allow the generic injected if it's the only option (fallback for MetaMask)
-    if (c.type === "injected" && c.name !== "Injected") return true;
+    if (c.type === "announced") { seen.add(c.name); return true; }
+    // Coinbase Wallet SDK connector (works on desktop + mobile, no project ID)
+    if (c.type === "coinbaseWallet" && !seen.has("Coinbase Wallet")) return true;
+    // Named injected wallets not already discovered via EIP-6963
+    if (c.type === "injected" && c.name !== "Injected" && !seen.has(c.name)) return true;
     return false;
   });
 

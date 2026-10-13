@@ -1,4 +1,5 @@
 import {
+  Index,
   Entity,
   PrimaryGeneratedColumn,
   Column,
@@ -9,6 +10,7 @@ import {
 import { User } from './user.entity';
 
 @Entity('credit_positions')
+@Index(['userId'], { unique: true })
 export class CreditPosition {
   @PrimaryGeneratedColumn('uuid')
   id!: string;
@@ -16,13 +18,13 @@ export class CreditPosition {
   @Column({ type: 'uuid' })
   userId!: string;
 
-  @Column({ type: 'decimal', precision: 18, scale: 2 })
+  @Column({ type: 'decimal', precision: 24, scale: 6 })
   stashPower!: string;
 
-  @Column({ type: 'decimal', precision: 18, scale: 2 })
+  @Column({ type: 'decimal', precision: 24, scale: 6 })
   usedCredit!: string;
 
-  @Column({ type: 'decimal', precision: 18, scale: 2 })
+  @Column({ type: 'decimal', precision: 24, scale: 6 })
   debtAmount!: string;
 
   @Column({ type: 'decimal', precision: 8, scale: 6 })

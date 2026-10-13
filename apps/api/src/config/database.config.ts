@@ -11,7 +11,11 @@ export function databaseConfigFactory(
     database: configService.get<string>('DATABASE_NAME', 'stash'),
     username: configService.get<string>('DATABASE_USER', 'stash'),
     password: configService.get<string>('DATABASE_PASSWORD', 'stash'),
+    ssl: configService.get<string>('DATABASE_SSL', 'false') === 'true' ? { rejectUnauthorized: true } : false,
+    extra: { connectionTimeoutMillis: 5000, statement_timeout: 10000, max: 20 },
     autoLoadEntities: true,
-    synchronize: true, // dev only — disable in production
+    migrations: [__dirname + '/../database/migrations/*.js'],
+    synchronize: configService.get<string>('NODE_ENV') !== 'production',
+    migrationsRun: false,
   };
 }

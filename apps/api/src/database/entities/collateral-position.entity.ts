@@ -1,4 +1,5 @@
 import {
+  Index,
   Entity,
   PrimaryGeneratedColumn,
   Column,
@@ -10,6 +11,7 @@ import {
 import { User } from './user.entity';
 
 @Entity('collateral_positions')
+@Index(['userId', 'assetAddress'], { unique: true })
 export class CollateralPosition {
   @PrimaryGeneratedColumn('uuid')
   id!: string;

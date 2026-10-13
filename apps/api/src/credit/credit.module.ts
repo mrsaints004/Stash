@@ -1,7 +1,9 @@
+import { BlockchainModule } from '../blockchain/blockchain.module';
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import {
   CollateralPosition,
+  Wallet,
   CreditPosition,
   Transaction,
   Repayment,
@@ -14,11 +16,13 @@ import { CreditService } from './credit.service';
 @Module({
   imports: [
     TypeOrmModule.forFeature([
+      Wallet,
       CreditPosition,
       CollateralPosition,
       Transaction,
       Repayment,
     ]),
+    BlockchainModule,
     AuthModule,
     OracleModule,
   ],

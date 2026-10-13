@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.28;
 
+import {MockPriceFeed} from "./helpers/MockPriceFeed.sol";
 import {Test, console2} from "forge-std/Test.sol";
 import {StashCredit} from "../src/StashCredit.sol";
 import {StashVault} from "../src/StashVault.sol";
@@ -109,8 +110,11 @@ contract StashCreditTest is Test {
         vault = new StashVault(address(aaveSpoke));
         credit = new StashCredit(address(aaveSpoke), address(vault), address(usdc));
 
+        vault.setStashCredit(address(credit));
+
         // Setup vault
         vault.addSupportedAsset(address(weth));
+        vault.configureAssetRisk(address(weth), address(new MockPriceFeed()), 5000, 7500, 300);
 
         // Give alice some WETH to deposit as collateral
         weth.mint(alice, 100 ether);
@@ -247,7 +251,7 @@ contract StashCreditTest is Test {
     function test_availableCredit() public view {
         // Mock returns 75e6 available borrows, alice has no debt
         uint256 available = credit.availableCredit(alice);
-        assertEq(available, 75e6);
+        assertEq(available, 0); // No collateral belongs to alice yet
     }
 
     function test_availableCredit_reduces_with_debt() public {
@@ -258,7 +262,7 @@ contract StashCreditTest is Test {
         vm.stopPrank();
 
         uint256 available = credit.availableCredit(alice);
-        assertEq(available, 50e6); // 75e6 - 25e6
+        assertEq(available, 75e6); // 10 WETH * $20 * 50% - $25
     }
 
     // --- Multiple Users ---

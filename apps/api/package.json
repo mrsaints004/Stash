@@ -7,7 +7,14 @@
     "build": "nest build",
     "start": "node dist/main",
     "start:prod": "node dist/main",
-    "lint": "tsc --noEmit"
+    "lint": "tsc --noEmit",
+    "test": "nest build && node --test test/*.test.cjs",
+    "migration:run": "node --env-file=../../.env node_modules/typeorm/cli.js migration:run -d dist/database/data-source.js",
+    "worker": "node dist/worker.js",
+    "verify:arc": "node scripts/verify-arc.cjs",
+    "keeper:signer": "node scripts/keeper-signer.cjs",
+    "check:launch": "node scripts/check-launch-config.cjs",
+    "test:load": "node scripts/load-readiness.cjs"
   },
   "dependencies": {
     "@nestjs/common": "^11.0.0",

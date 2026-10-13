@@ -17,8 +17,10 @@ export class TradeController {
   constructor(private readonly tradeService: TradeService) {}
 
   @Post('quote')
-  async getQuote(@Body() dto: GetQuoteDto) {
+  async getQuote(@Body() dto: GetQuoteDto, @Req() req: Request) {
+    const user = (req as any).user as JwtPayload;
     return this.tradeService.getQuote(
+      user.sub, user.address,
       dto.tokenIn,
       dto.tokenOut,
       dto.amountIn,
@@ -32,14 +34,7 @@ export class TradeController {
     @Req() req: Request,
   ) {
     const user = (req as any).user as JwtPayload;
-    return this.tradeService.prepareTrade(
-      user.sub,
-      user.address,
-      dto.tokenIn,
-      dto.tokenOut,
-      dto.amountIn,
-      dto.slippageBps,
-    );
+    return this.tradeService.prepareTrade(user.sub, user.address, dto.quoteId);
   }
 
   @Post('confirm')

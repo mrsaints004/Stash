@@ -9,6 +9,7 @@ const NAV_ITEMS = [
   { href: "/trade", label: "Trade" },
   { href: "/positions", label: "Positions" },
   { href: "/activity", label: "Activity" },
+  { href: "/notifications", label: "Alerts" },
 ];
 
 export function Header() {

@@ -18,16 +18,23 @@ contracts/broadcast/
 .env
 .env.local
 .env.*.local
+.env.mainnet
 apps/web/.env
 apps/api/.env
+apps/web/.env.mainnet
+apps/api/.env.mainnet
+contracts/.env.mainnet
 
 # Keep examples
 !.env.example
+!*.env.*.example
 !apps/web/.env.example
 !apps/api/.env.example
+!contracts/.env.mainnet.example
 
 # Secrets / deploy scripts with keys
 setup.sh
+setup-mainnet.sh
 
 # IDE
 .vscode/

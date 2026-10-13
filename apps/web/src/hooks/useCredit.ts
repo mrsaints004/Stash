@@ -1,15 +1,12 @@
 "use client";
 
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useSessionToken } from "./useSessionToken";
 import { useApi } from "./useApi";
 import type { ApiResponse } from "@stash/common";
 
-const TOKEN_KEY = "stash_token";
 
-function getToken(): string | null {
-  if (typeof window === "undefined") return null;
-  return localStorage.getItem(TOKEN_KEY);
-}
+
 
 interface PrepareResponse {
   creditAddress: string;
@@ -28,7 +25,7 @@ interface DebtResponse {
 }
 
 export function useCredit() {
-  const token = getToken();
+  const token = useSessionToken();
   const client = useApi(token);
   const queryClient = useQueryClient();
 

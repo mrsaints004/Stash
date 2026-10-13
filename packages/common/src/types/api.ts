@@ -21,6 +21,9 @@ export interface AuthToken {
 }
 
 export interface PortfolioSummary {
+  liquidationThreshold: number;
+  healthFactor: string;
+  liquidationDistance: number | null;
   totalCollateralUsd: string;
   totalDebtUsd: string;
   stashPower: string;

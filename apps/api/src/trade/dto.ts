@@ -1,4 +1,4 @@
-import { IsString, IsNotEmpty, IsOptional, IsNumber } from 'class-validator';
+import { Matches, MaxLength, IsString, IsNotEmpty, IsOptional, IsInt, Min, Max, IsUUID } from 'class-validator';
 
 export class GetQuoteDto {
   @IsString()
@@ -11,34 +11,25 @@ export class GetQuoteDto {
 
   @IsString()
   @IsNotEmpty()
+  @Matches(/^[0-9]+$/)
+  @MaxLength(78)
   amountIn!: string;
 
   @IsOptional()
-  @IsNumber()
+  @IsInt()
+  @Min(1)
+  @Max(500)
   slippageBps?: number;
 }
 
 export class PrepareTradeDto {
-  @IsString()
-  @IsNotEmpty()
-  tokenIn!: string;
-
-  @IsString()
-  @IsNotEmpty()
-  tokenOut!: string;
-
-  @IsString()
-  @IsNotEmpty()
-  amountIn!: string;
-
-  @IsOptional()
-  @IsNumber()
-  slippageBps?: number;
+  @IsUUID() quoteId!: string;
 }
 
 export class ConfirmTradeDto {
   @IsString()
   @IsNotEmpty()
+  @Matches(/^0x[0-9a-fA-F]{64}$/)
   txHash!: string;
 
   @IsString()
@@ -51,9 +42,13 @@ export class ConfirmTradeDto {
 
   @IsString()
   @IsNotEmpty()
+  @Matches(/^[0-9]+$/)
+  @MaxLength(78)
   amountIn!: string;
 
   @IsString()
   @IsNotEmpty()
+  @Matches(/^[0-9]+$/)
+  @MaxLength(78)
   amountOut!: string;
 }

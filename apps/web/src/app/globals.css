@@ -1,6 +1,8 @@
 @import "tailwindcss";
 
 @theme {
+  --font-sans: Inter, ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, monospace;
   /* Brand — warm gold accent on deep charcoal */
   --color-stash-gold: #d4a853;
   --color-stash-gold-light: #e8c878;

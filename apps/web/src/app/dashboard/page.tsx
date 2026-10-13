@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useDemoAccount as useAccount } from "@/hooks/useDemoAccount";
+import { useAccount } from "wagmi";
 import { Header } from "@/components/layout/Header";
 import { TokenAmount } from "@/components/common/TokenAmount";
 import { RiskBadge } from "@/components/common/RiskBadge";
@@ -9,7 +9,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { useStashPower } from "@/hooks/useStashPower";
 import { useCollateral } from "@/hooks/useCollateral";
 import { useTokenBalances } from "@/hooks/useTokenBalances";
-import { TOKENS, formatUsd, formatPercent, LTV } from "@stash/common";
+import { TOKENS, formatUsd, formatPercent } from "@stash/common";
 import type { RiskLevel } from "@stash/common";
 
 function LoadingSkeleton({ className = "" }: { className?: string }) {
@@ -149,10 +149,12 @@ function CollateralCard({
 function RiskLevelCard({
   riskLevel,
   ltv,
+  liquidationThreshold,
   isLoading,
 }: {
   riskLevel: RiskLevel;
   ltv: number;
+  liquidationThreshold: number | null;
   isLoading: boolean;
 }) {
   const riskColor: Record<RiskLevel, string> = {
@@ -201,18 +203,18 @@ function RiskLevelCard({
             {/* Warning threshold marker */}
             <div
               className="absolute top-0 h-full w-px bg-yellow-400"
-              style={{ left: `${LTV.WARNING * 100}%` }}
+              style={{ left: `${(liquidationThreshold ?? 0) / 1.25 * 100}%` }}
             />
             {/* Liquidation threshold marker */}
             <div
               className="absolute top-0 h-full w-px bg-stash-red"
-              style={{ left: `${LTV.LIQUIDATION * 100}%` }}
+              style={{ left: `${(liquidationThreshold ?? 0) * 100}%` }}
             />
           </div>
           <div className="flex justify-between mt-1.5 text-[10px] font-mono text-stash-dim">
             <span>0%</span>
-            <span>{formatPercent(LTV.WARNING)} warn</span>
-            <span>{formatPercent(LTV.LIQUIDATION)} liq</span>
+            <span>{formatPercent((liquidationThreshold ?? 0) / 1.25)} warn</span>
+            <span>{formatPercent((liquidationThreshold ?? 0))} liq</span>
           </div>
         </div>
       )}
@@ -226,19 +228,19 @@ function RiskLevelCard({
 
 function PortfolioCard({
   totalCollateralUsd,
-  usedCredit,
+  debtUsd,
   isLoading,
 }: {
   totalCollateralUsd: string;
-  usedCredit: string;
+  debtUsd: string;
   isLoading: boolean;
 }) {
-  const totalValue = Number(totalCollateralUsd) + Number(usedCredit);
+  const totalValue = Number(totalCollateralUsd);
 
   return (
     <div className="rounded-lg border border-stash-border bg-stash-surface p-6 card-hover">
       <p className="text-[11px] font-mono font-bold text-stash-gold tracking-wider uppercase">
-        Portfolio
+        Collateral and debt
       </p>
       <div className="mt-3">
         {isLoading ? (
@@ -248,7 +250,7 @@ function PortfolioCard({
             {formatUsd(totalValue)}
           </span>
         )}
-        <span className="ml-2 text-sm text-stash-muted">total value</span>
+        <span className="ml-2 text-sm text-stash-muted">collateral value</span>
       </div>
 
       {!isLoading && (
@@ -260,14 +262,14 @@ function PortfolioCard({
             </span>
           </div>
           <div className="flex items-center justify-between text-xs">
-            <span className="text-stash-muted">Active Trades</span>
-            <span className="font-mono text-stash-text">{formatUsd(usedCredit)}</span>
+            <span className="text-stash-muted">Outstanding debt</span>
+            <span className="font-mono text-stash-text">{formatUsd(debtUsd)}</span>
           </div>
         </div>
       )}
 
       <p className="mt-4 text-xs text-stash-dim leading-relaxed">
-        Combined value of collateral and open trade positions.
+        Trading assets are delivered to your wallet. Debt is tracked separately from collateral.
       </p>
     </div>
   );
@@ -277,17 +279,19 @@ function WalletBalancesCard({
   wethBalance,
   cirBtcBalance,
   isLoading,
+  error,
 }: {
   wethBalance: bigint;
   cirBtcBalance: bigint;
   isLoading: boolean;
+  error: boolean;
 }) {
   return (
     <div className="rounded-lg border border-stash-border bg-stash-surface p-6">
       <p className="text-[11px] font-mono font-bold text-stash-gold tracking-wider uppercase mb-4">
         Wallet Balances
       </p>
-      {isLoading ? (
+      {error ? <p role="alert" className="text-stash-muted">Wallet balances are unavailable.</p> : isLoading ? (
         <div className="space-y-3">
           <LoadingSkeleton className="h-5 w-40" />
           <LoadingSkeleton className="h-5 w-36" />
@@ -337,15 +341,20 @@ export default function DashboardPage() {
     ltv,
     riskLevel,
     isLoading: powerLoading,
+    error: powerError,
+    debtUsd,
+    liquidationThreshold,
   } = useStashPower();
   const {
     positions,
     isLoading: positionsLoading,
+    error: positionsError,
   } = useCollateral();
   const {
     wethBalance,
     cirBtcBalance,
     isLoading: balancesLoading,
+    error: balancesError,
   } = useTokenBalances();
 
   const isDataLoading = powerLoading || positionsLoading;
@@ -434,6 +443,8 @@ export default function DashboardPage() {
     );
   }
 
+  if (powerError || positionsError) return <div className="min-h-screen bg-stash-bg"><Header /><main className="mx-auto max-w-4xl p-8"><p role="alert" className="text-stash-red">Position and risk data are unavailable. Refresh when the connection recovers.</p><Link href="/repay" className="mt-4 inline-block text-stash-gold">Repay debt</Link></main></div>;
+
   return (
     <div className="min-h-screen bg-stash-bg">
       <Header />
@@ -469,13 +480,14 @@ export default function DashboardPage() {
             isLoading={isDataLoading}
           />
           <RiskLevelCard
+            liquidationThreshold={liquidationThreshold}
             riskLevel={riskLevel as RiskLevel}
             ltv={ltv}
             isLoading={isDataLoading}
           />
           <PortfolioCard
             totalCollateralUsd={totalCollateralUsd}
-            usedCredit={usedCredit}
+            debtUsd={debtUsd}
             isLoading={isDataLoading}
           />
         </div>
@@ -487,6 +499,7 @@ export default function DashboardPage() {
             wethBalance={wethBalance}
             cirBtcBalance={cirBtcBalance}
             isLoading={balancesLoading}
+          error={balancesError}
           />
 
           {/* Quick Actions */}

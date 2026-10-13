@@ -1,3 +1,4 @@
+import { TradeModule } from '../trade/trade.module';
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { CollateralPosition } from '../database/entities';
@@ -11,6 +12,7 @@ import { OracleModule } from '../oracle/oracle.module';
 @Module({
   imports: [
     TypeOrmModule.forFeature([CollateralPosition]),
+    TradeModule,
     AuthModule,
     CollateralModule,
     CreditModule,

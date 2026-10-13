@@ -1,9 +1,13 @@
+import { ResponseInterceptor } from './config/response.interceptor';
 import { NestFactory } from '@nestjs/core';
 import { ValidationPipe } from '@nestjs/common';
 import { AppModule } from './app.module';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
+
+  app.useGlobalInterceptors(new ResponseInterceptor());
+  app.enableShutdownHooks();
 
   const corsOrigin = process.env.CORS_ORIGIN ?? 'http://localhost:3000';
   app.enableCors({
@@ -24,4 +28,4 @@ async function bootstrap() {
   console.log(`Stash API running on port ${port}`);
 }
 
-bootstrap();
+bootstrap().catch(() => { console.error('Stash API startup failed; check configuration and service readiness'); process.exitCode=1; });

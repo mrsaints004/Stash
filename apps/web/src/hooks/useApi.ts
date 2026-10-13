@@ -1,5 +1,7 @@
 "use client";
 
+import { notifySessionChanged } from "@/hooks/useSessionToken";
+
 import { useMemo } from "react";
 import axios from "axios";
 
@@ -13,6 +15,7 @@ export function useApi(token: string | null) {
   const client = useMemo(() => {
     const instance = axios.create({
       baseURL: process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001",
+      timeout: 15_000,
       headers: {
         "Content-Type": "application/json",
       },
@@ -31,7 +34,10 @@ export function useApi(token: string | null) {
           typeof window !== "undefined"
         ) {
           localStorage.removeItem(TOKEN_KEY);
+          notifySessionChanged();
         }
+        const detail = error.response?.data?.message;
+        if (detail) error.message = Array.isArray(detail) ? detail.join("; ") : String(detail);
         return Promise.reject(error);
       }
     );

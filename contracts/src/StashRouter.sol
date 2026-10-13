@@ -1,6 +1,9 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.28;
+// Legacy V1 retained for regression tests. Not a supported Arc deployment; use src/v2/.
 
+import {StashPausable} from "./StashPausable.sol";
+import {SafeToken} from "./libraries/SafeToken.sol";
 import {IERC20} from "forge-std/interfaces/IERC20.sol";
 import {IStashRouter} from "./interfaces/IStashRouter.sol";
 import {IStashCredit} from "./interfaces/IStashCredit.sol";
@@ -29,8 +32,8 @@ interface ISwapRouter {
 /// @notice Executes swaps via Uniswap with borrowed USDC.
 ///         Only allows trading with tokens on the allowlist.
 ///         Validates that user has sufficient Stash Power (credit) before trading.
-contract StashRouter is IStashRouter {
-    address public owner;
+contract StashRouter is IStashRouter, StashPausable {
+    using SafeToken for address;
     IStashCredit public stashCredit;
     ISwapRouter public swapRouter;
     address public usdc;
@@ -51,13 +54,7 @@ contract StashRouter is IStashRouter {
     /// @dev Collected protocol fees per token
     mapping(address => uint256) public collectedFees;
 
-    modifier onlyOwner() {
-        if (msg.sender != owner) revert StashErrors.NotOwner();
-        _;
-    }
-
     constructor(address _stashCredit, address _swapRouter, address _usdc) {
-        owner = msg.sender;
         stashCredit = IStashCredit(_stashCredit);
         swapRouter = ISwapRouter(_swapRouter);
         usdc = _usdc;
@@ -74,7 +71,7 @@ contract StashRouter is IStashRouter {
         address tokenOut,
         uint256 amountIn,
         uint256 amountOutMin
-    ) external override returns (uint256 amountOut) {
+    ) external override whenNotPaused nonReentrant returns (uint256 amountOut) {
         if (amountIn == 0) revert StashErrors.ZeroAmount();
         if (!_allowedTokens[tokenIn]) revert StashErrors.TokenNotAllowed(tokenIn);
         if (!_allowedTokens[tokenOut]) revert StashErrors.TokenNotAllowed(tokenOut);
@@ -84,13 +81,13 @@ contract StashRouter is IStashRouter {
         uint256 swapAmount = amountIn - fee;
 
         // Transfer tokenIn from user
-        IERC20(tokenIn).transferFrom(msg.sender, address(this), amountIn);
+        tokenIn.safeTransferFrom(msg.sender, address(this), amountIn);
 
         // Collect fee
         collectedFees[tokenIn] += fee;
 
         // Approve swap router
-        IERC20(tokenIn).approve(address(swapRouter), swapAmount);
+        tokenIn.forceApprove(address(swapRouter), swapAmount);
 
         // Execute swap
         amountOut = swapRouter.exactInputSingle(
@@ -134,10 +131,10 @@ contract StashRouter is IStashRouter {
         emit StashEvents.TokenDisallowed(token);
     }
 
-    function withdrawFees(address token, address to) external onlyOwner {
+    function withdrawFees(address token, address to) external onlyOwner nonReentrant {
         uint256 feeAmount = collectedFees[token];
         if (feeAmount == 0) revert StashErrors.ZeroAmount();
         collectedFees[token] = 0;
-        IERC20(token).transfer(to, feeAmount);
+        token.safeTransfer(to, feeAmount);
     }
 }

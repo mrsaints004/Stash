@@ -1,9 +1,11 @@
+import { notifySessionChanged } from "@/hooks/useSessionToken";
 import axios from "axios";
 
 const TOKEN_KEY = "stash_token";
 
 export const api = axios.create({
   baseURL: process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001",
+  timeout: 15_000,
   headers: {
     "Content-Type": "application/json",
   },
@@ -18,7 +20,10 @@ api.interceptors.response.use(
       typeof window !== "undefined"
     ) {
       localStorage.removeItem(TOKEN_KEY);
+          notifySessionChanged();
     }
-    return Promise.reject(error);
+    const detail = error.response?.data?.message;
+        if (detail) error.message = Array.isArray(detail) ? detail.join("; ") : String(detail);
+        return Promise.reject(error);
   }
 );

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.28;
 
+import {MockPriceFeed} from "./helpers/MockPriceFeed.sol";
 import {Test, console2} from "forge-std/Test.sol";
 import {StashVault} from "../src/StashVault.sol";
 import {StashCredit} from "../src/StashCredit.sol";
@@ -192,6 +193,7 @@ contract E2ETest is Test {
         // Deploy Stash contracts (mirrors Deploy.s.sol order)
         vault = new StashVault(address(aaveSpoke));
         vault.addSupportedAsset(address(weth));
+        vault.configureAssetRisk(address(weth), address(new MockPriceFeed()), 5000, 7500, 300);
         vault.addSupportedAsset(address(cirBtc));
 
         credit = new StashCredit(address(aaveSpoke), address(vault), address(usdc));

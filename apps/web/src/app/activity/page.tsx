@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useDemoAccount as useAccount } from "@/hooks/useDemoAccount";
+import { useAccount } from "wagmi";
 import { Header } from "@/components/layout/Header";
 import { useAuth } from "@/hooks/useAuth";
 import { useActivity } from "@/hooks/useActivity";
@@ -11,6 +11,7 @@ const TYPE_CONFIG: Record<
   ActivityEntry["type"],
   { label: string; color: string; bg: string; icon: string }
 > = {
+  liquidation: { label: "Liquidation", color: "text-stash-red", bg: "bg-stash-red/10", icon: "M12 4.5v15m7.5-7.5h-15" },
   deposit: {
     label: "Deposit",
     color: "text-stash-gold",
@@ -47,6 +48,7 @@ const STATUS_CONFIG: Record<
   string,
   { label: string; color: string; bg: string }
 > = {
+  orphaned: { label: "Reorganized", color: "text-stash-muted", bg: "bg-stash-surface-2" },
   pending: {
     label: "Pending",
     color: "text-yellow-400",
@@ -233,7 +235,7 @@ export default function ActivityPage() {
                     {/* Amount */}
                     <div className="text-right">
                       <div className="text-sm font-medium text-stash-text font-mono">
-                        {tx.amount} {tx.symbol}
+                        {tx.amount === null ? '—' : `${tx.amount} ${tx.symbol ?? ''}`}
                       </div>
                       <div className="text-xs text-stash-muted">
                         {new Date(tx.createdAt).toLocaleDateString()}

@@ -1,4 +1,5 @@
 import {
+  Index,
   Entity,
   PrimaryGeneratedColumn,
   Column,
@@ -9,6 +10,7 @@ import {
 import { User } from './user.entity';
 
 @Entity('transactions')
+@Index(['chainId', 'txHash'], { unique: true })
 export class Transaction {
   @PrimaryGeneratedColumn('uuid')
   id!: string;
@@ -17,7 +19,7 @@ export class Transaction {
   userId!: string;
 
   @Column({ type: 'varchar' })
-  type!: 'deposit' | 'withdraw' | 'borrow' | 'repay' | 'trade';
+  type!: 'deposit' | 'withdraw' | 'borrow' | 'repay' | 'trade' | 'liquidation';
 
   @Column({ type: 'varchar' })
   txHash!: string;
@@ -27,6 +29,8 @@ export class Transaction {
 
   @Column({ type: 'int' })
   chainId!: number;
+
+  @Column({ type: 'bigint', nullable: true }) blockNumber!: string | null;
 
   @CreateDateColumn()
   createdAt!: Date;

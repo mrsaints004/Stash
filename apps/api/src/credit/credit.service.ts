@@ -1,3 +1,9 @@
+import { LifecycleService } from '../lifecycle/lifecycle.service';
+import { ProtocolService } from '../protocol/protocol.service';
+import { VAULT_V2_ABI, CREDIT_V2_ABI } from '../config/protocol.config';
+import { BlockchainService } from '../blockchain/blockchain.service';
+import { PROTOCOL_EVENTS } from '../blockchain/events';
+import { recordConfirmedAction } from '../blockchain/confirmed-action';
 import {
   Injectable,
   BadRequestException,
@@ -5,8 +11,9 @@ import {
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { ConfigService } from '@nestjs/config';
-import { encodeFunctionData, type Address } from 'viem';
+import { encodeFunctionData, parseAbi, type Address } from 'viem';
 import {
+  Wallet,
   CreditPosition,
   CollateralPosition,
   Transaction,
@@ -75,6 +82,11 @@ export interface StashPowerResult {
   availableCredit: number;
   ltv: number;
   debtAmount: number;
+  debtUsd: number;
+  liquidationThreshold: number;
+  healthFactor: string;
+  liquidationDistance: number | null;
+  collateralPositions: { assetSymbol: string; assetAddress: string; amount: string; usdValue: string; collateralFactorBps: number }[];
 }
 
 @Injectable()
@@ -92,6 +104,10 @@ export class CreditService {
     private readonly repaymentRepo: Repository<Repayment>,
     private readonly oracleService: OracleService,
     private readonly configService: ConfigService,
+    private readonly blockchainService: BlockchainService,
+    private readonly protocol: ProtocolService,
+    private readonly lifecycle: LifecycleService,
+    @InjectRepository(Wallet) private readonly walletRepo: Repository<Wallet>,
   ) {
     this.creditAddress = this.configService.get<string>(
       'STASH_CREDIT_ADDRESS',
@@ -100,47 +116,47 @@ export class CreditService {
   }
 
   async calculateStashPower(userId: string): Promise<StashPowerResult> {
-    // Fetch all collateral positions for user
-    const positions = await this.collateralRepo.find({
-      where: { userId },
-    });
-
-    // Calculate total collateral USD value
+    const wallet = await this.walletRepo.findOne({ where: { userId, isPrimary: true } });
+    if (!wallet) throw new BadRequestException('No primary wallet found');
+    const client = this.blockchainService.getClient();
+    const vault = this.configService.getOrThrow<string>('STASH_VAULT_ADDRESS') as Address;
+    const configuration = await this.protocol.configuration();
     let totalCollateralUsd = 0;
-
-    for (const position of positions) {
-      const symbol = ASSET_SYMBOLS[position.assetAddress.toLowerCase()];
-      if (!symbol) continue;
-
-      const decimals = ASSET_DECIMALS[position.assetAddress.toLowerCase()];
-      if (decimals === undefined) continue;
-
-      const priceUsd = await this.oracleService.getPrice(symbol);
-      const amount = Number(BigInt(position.amount)) / 10 ** decimals;
-      const positionUsd = amount * priceUsd;
-      totalCollateralUsd += positionUsd;
+    const collateralPositions: StashPowerResult['collateralPositions'] = [];
+    for (const asset of configuration.assets) {
+      const balance = await client.readContract({ address: vault, abi: VAULT_V2_ABI,
+        functionName: 'balanceOf', args: [wallet.address as Address, asset.address] });
+      if (balance === 0n) continue;
+      const price = await client.readContract({ address: vault, abi: VAULT_V2_ABI, functionName: 'priceUsd6', args: [asset.address] });
+      const usdValue = Number(balance) / 10 ** asset.decimals * Number(price) / 1e6;
+      totalCollateralUsd += usdValue;
+      collateralPositions.push({ assetSymbol: asset.symbol, assetAddress: asset.address, amount: balance.toString(),
+        usdValue: usdValue.toFixed(2), collateralFactorBps: asset.collateralFactorBps });
     }
-
-    // Get existing credit position for debt info
-    const creditPosition = await this.creditRepo.findOne({
-      where: { userId },
-    });
-
-    const debtAmount = creditPosition ? Number(creditPosition.debtAmount) : 0;
-    const usedCredit = creditPosition ? Number(creditPosition.usedCredit) : 0;
-
-    // Stash Power = total collateral * LTV_MAX
-    const stashPower = totalCollateralUsd * LTV_MAX;
-    const availableCredit = Math.max(0, stashPower - usedCredit);
+    const lendingHealth = await client.readContract({ address: vault, abi: VAULT_V2_ABI, functionName: 'lendingHealth', args: [wallet.address as Address] });
+    const [chainDebt, capacity] = await Promise.all([
+      client.readContract({ address: this.creditAddress, abi: CREDIT_ABI, functionName: 'debtOf', args: [wallet.address as Address] }),
+      client.readContract({ address: vault, abi: parseAbi(['function borrowingCapacity(address user) view returns (uint256)']), functionName: 'borrowingCapacity', args: [wallet.address as Address] }),
+    ]);
+    const debtAmount = Number(chainDebt) / 1e6;
+    const usdcPrice = chainDebt === 0n ? 1000000n : await client.readContract({ address: vault, abi: VAULT_V2_ABI, functionName: 'priceUsd6', args: [configuration.usdc.address] });
+    const debtUsd = debtAmount * Number(usdcPrice) / 1e6;
+    const usedCredit = debtAmount;
+    const [maximumCredit, available] = await Promise.all([
+      client.readContract({ address: this.creditAddress, abi: CREDIT_V2_ABI, functionName: 'maximumCredit' }),
+      client.readContract({ address: this.creditAddress, abi: CREDIT_V2_ABI, functionName: 'availableCredit', args: [wallet.address as Address] }),
+    ]);
+    const stashPower = Number(capacity < maximumCredit ? capacity : maximumCredit) / 1e6;
+    const availableCredit = Number(available) / 1e6;
 
     // Current LTV = debt / totalCollateral (0 if no collateral)
-    const ltv = totalCollateralUsd > 0 ? debtAmount / totalCollateralUsd : 0;
+    const ltv = totalCollateralUsd > 0 ? debtUsd / totalCollateralUsd : (debtAmount > 0 ? 1 : 0);
 
     // Update credit position in DB
     const updatedPosition = await this.getOrCreateCreditPosition(userId);
     updatedPosition.stashPower = stashPower.toFixed(2);
-    updatedPosition.usedCredit = usedCredit.toFixed(2);
-    updatedPosition.debtAmount = debtAmount.toFixed(2);
+    updatedPosition.usedCredit = usedCredit.toFixed(6);
+    updatedPosition.debtAmount = debtAmount.toFixed(6);
     updatedPosition.ltv = ltv.toFixed(6);
     await this.creditRepo.save(updatedPosition);
 
@@ -151,6 +167,11 @@ export class CreditService {
       availableCredit,
       ltv,
       debtAmount,
+      debtUsd,
+      liquidationThreshold: Number(lendingHealth[3]) / 10000,
+      healthFactor: lendingHealth[5].toString(),
+      liquidationDistance: debtAmount === 0 ? null : Math.max(0, 1 - 1 / (Number(lendingHealth[5]) / 1e18)),
+      collateralPositions,
     };
   }
 
@@ -199,7 +220,16 @@ export class CreditService {
       args: [parsedAmount],
     });
 
+    await this.blockchainService.getClient().simulateContract({
+      address: this.creditAddress, abi: CREDIT_ABI,
+      functionName: 'borrow', args: [parsedAmount], account: walletAddress as Address,
+    });
+    const intentId = await this.lifecycle.prepare(userId, walletAddress, 'borrow', { to: this.creditAddress, data });
     return {
+      intentId,
+      creditAddress: this.creditAddress,
+      amount,
+      calldata: data,
       to: this.creditAddress,
       data,
     };
@@ -211,49 +241,23 @@ export class CreditService {
     txHash: string,
     amount: string,
   ) {
-    // Record transaction
-    const transaction = this.transactionRepo.create({
-      userId,
-      type: 'borrow' as const,
-      txHash,
-      status: 'confirmed',
-      chainId: ARC_CHAIN_ID,
-      confirmedAt: new Date(),
+    const args = await this.blockchainService.verifyEvent(txHash, walletAddress, this.creditAddress,
+      PROTOCOL_EVENTS, 'Borrowed', { user: walletAddress, amount });
+    const actualAmount = BigInt(String(args.amount));
+    return recordConfirmedAction(this.transactionRepo, userId, txHash, 'borrow', Number(this.configService.get<string>('CHAIN_ID', '5042002')), async manager => {
+      const repo = manager.getRepository(CreditPosition);
+      let position = await repo.findOne({ where: { userId } });
+      if (!position) position = repo.create({ userId, stashPower: '0', usedCredit: '0', debtAmount: '0', ltv: '0' });
+      // Read authoritative debt; interest accounting belongs to the lending adapter.
+      const debt = await this.blockchainService.getClient().readContract({
+        address: this.creditAddress, abi: CREDIT_ABI, functionName: 'debtOf', args: [walletAddress as Address],
+      });
+      position.debtAmount = (Number(debt) / 1e6).toFixed(6);
+      position.usedCredit = position.debtAmount;
+      await repo.save(position);
+
+      return { position };
     });
-    await this.transactionRepo.save(transaction);
-
-    // Update credit position
-    const position = await this.getOrCreateCreditPosition(userId);
-    const borrowAmountUsd = Number(BigInt(amount)) / 10 ** 6;
-    const currentUsedCredit = Number(position.usedCredit);
-    const currentDebt = Number(position.debtAmount);
-
-    position.usedCredit = (currentUsedCredit + borrowAmountUsd).toFixed(2);
-    position.debtAmount = (currentDebt + borrowAmountUsd).toFixed(2);
-
-    // Recalculate LTV
-    const positions = await this.collateralRepo.find({
-      where: { userId },
-    });
-
-    let totalCollateralUsd = 0;
-    for (const collateral of positions) {
-      const symbol = ASSET_SYMBOLS[collateral.assetAddress.toLowerCase()];
-      if (!symbol) continue;
-      const decimals = ASSET_DECIMALS[collateral.assetAddress.toLowerCase()];
-      if (decimals === undefined) continue;
-      const priceUsd = await this.oracleService.getPrice(symbol);
-      const amt = Number(BigInt(collateral.amount)) / 10 ** decimals;
-      totalCollateralUsd += amt * priceUsd;
-    }
-
-    const newDebt = currentDebt + borrowAmountUsd;
-    const ltv = totalCollateralUsd > 0 ? newDebt / totalCollateralUsd : 0;
-    position.ltv = ltv.toFixed(6);
-
-    await this.creditRepo.save(position);
-
-    return { position, transaction };
   }
 
   async prepareRepay(
@@ -268,7 +272,7 @@ export class CreditService {
 
     // Check debt exists
     const position = await this.getOrCreateCreditPosition(userId);
-    const currentDebt = Number(position.debtAmount);
+    const currentDebt = Number((await this.getDebt(userId)).debtUsd);
     if (currentDebt <= 0) {
       throw new BadRequestException('No outstanding debt to repay');
     }
@@ -287,11 +291,16 @@ export class CreditService {
       args: [this.creditAddress, parsedAmount],
     });
 
+    const intentId = await this.lifecycle.prepare(userId, walletAddress, 'repay', { to: this.creditAddress, data });
     return {
+      intentId,
+      creditAddress: this.creditAddress,
+      amount,
+      calldata: data,
       to: this.creditAddress,
       data,
       requiresApproval: true,
-      approvalTo: USDC_ADDRESS,
+      approvalTo: (await this.protocol.configuration()).usdc.address,
       approvalData,
     };
   }
@@ -302,66 +311,31 @@ export class CreditService {
     txHash: string,
     amount: string,
   ) {
-    // Record transaction
-    const transaction = this.transactionRepo.create({
-      userId,
-      type: 'repay' as const,
-      txHash,
-      status: 'confirmed',
-      chainId: ARC_CHAIN_ID,
-      confirmedAt: new Date(),
+    const args = await this.blockchainService.verifyEvent(txHash, walletAddress, this.creditAddress,
+      PROTOCOL_EVENTS, 'Repaid', { user: walletAddress });
+    const actualAmount = BigInt(String(args.amount));
+    return recordConfirmedAction(this.transactionRepo, userId, txHash, 'repay', Number(this.configService.get<string>('CHAIN_ID', '5042002')), async manager => {
+      const repo = manager.getRepository(CreditPosition);
+      let position = await repo.findOne({ where: { userId } });
+      if (!position) position = repo.create({ userId, stashPower: '0', usedCredit: '0', debtAmount: '0', ltv: '0' });
+      // Read authoritative debt; interest accounting belongs to the lending adapter.
+      const debt = await this.blockchainService.getClient().readContract({
+        address: this.creditAddress, abi: CREDIT_ABI, functionName: 'debtOf', args: [walletAddress as Address],
+      });
+      position.debtAmount = (Number(debt) / 1e6).toFixed(6);
+      position.usedCredit = position.debtAmount;
+      await repo.save(position);
+      const repayments = manager.getRepository(Repayment); await repayments.save(repayments.create({ userId, amount: actualAmount.toString(), txHash: txHash.toLowerCase(), status: 'confirmed' }));
+      return { position };
     });
-    await this.transactionRepo.save(transaction);
-
-    // Create repayment entity
-    const repayment = this.repaymentRepo.create({
-      userId,
-      amount,
-      txHash,
-      status: 'confirmed',
-    });
-    await this.repaymentRepo.save(repayment);
-
-    // Update credit position
-    const position = await this.getOrCreateCreditPosition(userId);
-    const repayAmountUsd = Number(BigInt(amount)) / 10 ** 6;
-    const currentUsedCredit = Number(position.usedCredit);
-    const currentDebt = Number(position.debtAmount);
-
-    position.usedCredit = Math.max(0, currentUsedCredit - repayAmountUsd).toFixed(2);
-    position.debtAmount = Math.max(0, currentDebt - repayAmountUsd).toFixed(2);
-
-    // Recalculate LTV
-    const positions = await this.collateralRepo.find({
-      where: { userId },
-    });
-
-    let totalCollateralUsd = 0;
-    for (const collateral of positions) {
-      const symbol = ASSET_SYMBOLS[collateral.assetAddress.toLowerCase()];
-      if (!symbol) continue;
-      const decimals = ASSET_DECIMALS[collateral.assetAddress.toLowerCase()];
-      if (decimals === undefined) continue;
-      const priceUsd = await this.oracleService.getPrice(symbol);
-      const amt = Number(BigInt(collateral.amount)) / 10 ** decimals;
-      totalCollateralUsd += amt * priceUsd;
-    }
-
-    const newDebt = Math.max(0, currentDebt - repayAmountUsd);
-    const ltv = totalCollateralUsd > 0 ? newDebt / totalCollateralUsd : 0;
-    position.ltv = ltv.toFixed(6);
-
-    await this.creditRepo.save(position);
-
-    return { position, repayment, transaction };
   }
 
   async getDebt(userId: string) {
-    const position = await this.getOrCreateCreditPosition(userId);
-    return {
-      debtAmount: position.debtAmount,
-      usedCredit: position.usedCredit,
-      ltv: position.ltv,
-    };
+    const wallet = await this.walletRepo.findOne({ where: { userId, isPrimary: true } });
+    if (!wallet) throw new BadRequestException('No primary wallet found');
+    const debt = await this.blockchainService.getClient().readContract({
+      address: this.creditAddress, abi: CREDIT_ABI, functionName: 'debtOf', args: [wallet.address as Address],
+    });
+    return { debtAmount: debt.toString(), debtUsd: (Number(debt) / 1e6).toFixed(6) };
   }
 }

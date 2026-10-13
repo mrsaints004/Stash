@@ -1,20 +1,23 @@
 import { Controller, Post, Body } from '@nestjs/common';
-import { IsString, IsNotEmpty } from 'class-validator';
+import { IsString, IsNotEmpty, Matches, MaxLength } from 'class-validator';
 import { AuthService } from './auth.service';
 
 class ChallengeDto {
   @IsString()
   @IsNotEmpty()
+  @Matches(/^0x[0-9a-fA-F]{40}$/)
   address!: string;
 }
 
 class VerifyDto {
   @IsString()
   @IsNotEmpty()
+  @MaxLength(4096)
   message!: string;
 
   @IsString()
   @IsNotEmpty()
+  @MaxLength(1024)
   signature!: string;
 
   @IsString()

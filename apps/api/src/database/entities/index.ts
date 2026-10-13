@@ -12,3 +12,8 @@ export { Repayment } from './repayment.entity';
 export { Withdrawal } from './withdrawal.entity';
 export { ProtocolParameter } from './protocol-parameter.entity';
 export { Chain } from './chain.entity';
+export { TradeQuoteRecord } from './trade-quote.entity';
+export { TransactionIntent } from './transaction-intent.entity';
+export { IndexerState } from './indexer-state.entity';
+export { RiskAlert } from './risk-alert.entity';
+export { LiquidationJob } from './liquidation-job.entity';

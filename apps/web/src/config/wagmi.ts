@@ -1,31 +1,15 @@
-import { http, createConfig } from "wagmi";
-import { type Chain } from "viem";
-
-export const arcTestnet: Chain = {
-  id: 5042002,
-  name: "Arc Testnet",
-  nativeCurrency: {
-    name: "USDC",
-    symbol: "USDC",
-    decimals: 18,
-  },
-  rpcUrls: {
-    default: { http: ["https://rpc.testnet.arc.io"] },
-  },
-  blockExplorers: {
-    default: { name: "Arc Explorer", url: "https://explorer.arc.io" },
-  },
-  testnet: true,
-};
-
-// No connectors array — wagmi auto-discovers wallets via EIP-6963.
-// Only real EVM wallets (MetaMask, Rabby, Coinbase, Trust, etc.)
-// announce themselves through EIP-6963. Non-EVM extensions are excluded.
-export const config = createConfig({
-  chains: [arcTestnet],
-  transports: {
-    [arcTestnet.id]: http(),
-  },
-  ssr: true,
-  multiInjectedProviderDiscovery: true,
-});
+import { http, createConfig, type Config } from 'wagmi';
+import { coinbaseWallet, injected } from 'wagmi/connectors';
+import { defineChain } from 'viem';
+const id = Number(process.env.NEXT_PUBLIC_CHAIN_ID ?? 5042002);
+if (![5042, 5042002].includes(id)) throw new Error('Stash supports Arc only');
+const chain = defineChain({ id, name: id === 5042 ? 'Arc' : 'Arc Testnet',
+  nativeCurrency: { name: 'USDC', symbol: 'USDC', decimals: 18 },
+  rpcUrls: { default: { http: [process.env.NEXT_PUBLIC_RPC_URL ?? (id === 5042 ? 'https://rpc.mainnet.arc.io' : 'https://rpc.testnet.arc.io')] } },
+  blockExplorers: { default: { name: 'Explorer', url: process.env.NEXT_PUBLIC_EXPLORER_URL ?? (id === 5042 ? 'https://explorer.arc.io' : 'https://explorer.testnet.arc.io') } },
+  testnet: id === 5042002 });
+export const config: Config = createConfig({ chains: [chain], transports: { [id]: http() },
+  connectors: [
+    injected(),
+    coinbaseWallet({ appName: 'Stash', darkMode: true }),
+  ], ssr: true, multiInjectedProviderDiscovery: true });

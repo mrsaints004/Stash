@@ -1,17 +1,21 @@
 "use client";
 
 import Link from "next/link";
-import { useDemoAccount as useAccount } from "@/hooks/useDemoAccount";
+import { useAccount } from "wagmi";
 import { Header } from "@/components/layout/Header";
 import { useAuth } from "@/hooks/useAuth";
 import { useStashPower } from "@/hooks/useStashPower";
-import { LTV, formatPercent, truncateAddress } from "@stash/common";
-import { arcTestnet } from "@/config/wagmi";
+import { formatPercent, truncateAddress } from "@stash/common";
+import { useProtocol } from "@/hooks/useProtocol";
+import { config } from "@/config/wagmi";
+const arcNetwork = config.chains[0];
 
 export default function SettingsPage() {
   const { address, isConnected, chain } = useAccount();
   const { isAuthenticated, login, logout, isLoading: authLoading } = useAuth();
-  const { ltv, riskLevel } = useStashPower();
+  const { ltv, liquidationThreshold, error: riskError, isLoading: riskLoading } = useStashPower();
+
+  const protocol = useProtocol();
 
   // Not connected
   if (!isConnected) {
@@ -99,13 +103,13 @@ export default function SettingsPage() {
             <div className="flex items-center justify-between">
               <span className="text-sm text-stash-muted">Network</span>
               <span className="text-sm text-stash-text">
-                {chain?.name ?? arcTestnet.name}
+                {chain?.name ?? arcNetwork.name}
               </span>
             </div>
             <div className="flex items-center justify-between">
               <span className="text-sm text-stash-muted">Chain ID</span>
               <span className="text-sm text-stash-text font-mono">
-                {chain?.id ?? arcTestnet.id}
+                {chain?.id ?? arcNetwork.id}
               </span>
             </div>
           </div>
@@ -117,34 +121,17 @@ export default function SettingsPage() {
             Risk Parameters
           </h3>
           <p className="text-xs text-stash-muted mb-4">
-            These are protocol-level parameters and cannot be changed.
+            Collateral factors are set per asset. Authorized governance can change protocol parameters.
           </p>
 
           <div className="space-y-3">
-            <div className="flex items-center justify-between">
-              <span className="text-sm text-stash-muted">Max LTV</span>
-              <span className="text-sm text-stash-text font-medium font-mono">
-                {formatPercent(LTV.MAX)}
-              </span>
-            </div>
-            <div className="flex items-center justify-between">
-              <span className="text-sm text-stash-muted">Warning Threshold</span>
-              <span className="text-sm text-yellow-400 font-medium font-mono">
-                {formatPercent(LTV.WARNING)}
-              </span>
-            </div>
-            <div className="flex items-center justify-between">
-              <span className="text-sm text-stash-muted">
-                Liquidation Threshold
-              </span>
-              <span className="text-sm text-stash-red font-medium font-mono">
-                {formatPercent(LTV.LIQUIDATION)}
-              </span>
-            </div>
+            {protocol.data?.assets.map(asset => <div key={asset.address} className="flex items-center justify-between"><span className="text-sm text-stash-muted">{asset.symbol} collateral factor</span><span className="font-mono">{formatPercent(asset.collateralFactorBps / 10000)}</span></div>)}
+            {protocol.error && <p role="alert">Asset parameters are unavailable.</p>}
+            <div className="flex items-center justify-between"><span className="text-sm text-stash-muted">Position liquidation threshold</span><span className="font-mono">{riskError || riskLoading || liquidationThreshold === null ? 'Unavailable' : formatPercent(liquidationThreshold)}</span></div>
             <div className="border-t border-stash-border pt-3 flex items-center justify-between">
               <span className="text-sm text-stash-muted">Your Current LTV</span>
               <span className="text-sm text-stash-text font-medium font-mono">
-                {formatPercent(ltv)}
+                {riskError || riskLoading ? 'Unavailable' : formatPercent(ltv)}
               </span>
             </div>
           </div>

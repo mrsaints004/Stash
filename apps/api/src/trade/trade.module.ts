@@ -1,3 +1,4 @@
+import { TradeQuoteRecord } from '../database/entities/trade-quote.entity';
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import {
@@ -14,7 +15,7 @@ import { TradeService } from './trade.service';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([TradePosition, TradeExecution, Transaction]),
+    TypeOrmModule.forFeature([TradePosition, TradeExecution, Transaction, TradeQuoteRecord]),
     AuthModule,
     BlockchainModule,
     CreditModule,
