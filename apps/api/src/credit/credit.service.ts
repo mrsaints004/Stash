@@ -225,14 +225,14 @@ export class CreditService {
       functionName: 'borrow', args: [parsedAmount], account: walletAddress as Address,
     });
     const intentId = await this.lifecycle.prepare(userId, walletAddress, 'borrow', { to: this.creditAddress, data });
-    return {
+    return { data: {
       intentId,
       creditAddress: this.creditAddress,
       amount,
       calldata: data,
       to: this.creditAddress,
       data,
-    };
+    } };
   }
 
   async confirmBorrow(
@@ -292,7 +292,7 @@ export class CreditService {
     });
 
     const intentId = await this.lifecycle.prepare(userId, walletAddress, 'repay', { to: this.creditAddress, data });
-    return {
+    return { data: {
       intentId,
       creditAddress: this.creditAddress,
       amount,
@@ -302,7 +302,7 @@ export class CreditService {
       requiresApproval: true,
       approvalTo: (await this.protocol.configuration()).usdc.address,
       approvalData,
-    };
+    } };
   }
 
   async confirmRepay(

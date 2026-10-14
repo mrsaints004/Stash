@@ -150,7 +150,7 @@ export class CollateralService {
     }
 
     const intentId = await this.lifecycle.prepare(userId, walletAddress, 'deposit', { to: this.vaultAddress, data: depositData });
-    return {
+    return { data: {
       intentId,
       vaultAddress: this.vaultAddress,
       to: this.vaultAddress,
@@ -159,7 +159,7 @@ export class CollateralService {
       requiresApproval,
       approvalTo: assetAddress,
       approvalData,
-    };
+    } };
   }
 
   async confirmDeposit(
@@ -218,13 +218,13 @@ export class CollateralService {
     });
 
     const intentId = await this.lifecycle.prepare(userId, walletAddress, 'withdraw', { to: this.vaultAddress, data: withdrawData });
-    return {
+    return { data: {
       intentId,
       vaultAddress: this.vaultAddress,
       to: this.vaultAddress,
       calldata: withdrawData,
       data: withdrawData,
-    };
+    } };
   }
 
   async confirmWithdraw(
