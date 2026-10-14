@@ -3,9 +3,9 @@ import { Web3Provider } from "@/providers/Web3Provider";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Stash — Trade with your crypto. Keep your crypto.",
+  title: "Stash - Trade with your crypto. Keep your crypto.",
   description:
-    "Deposit WETH or cirBTC as collateral, get USDC trading power, and trade — all without selling your holdings.",
+    "Deposit WETH or cirBTC as collateral, get USDC trading power, and trade - all without selling your holdings.",
 };
 
 export default function RootLayout({

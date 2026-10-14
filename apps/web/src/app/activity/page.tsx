@@ -235,7 +235,7 @@ export default function ActivityPage() {
                     {/* Amount */}
                     <div className="text-right">
                       <div className="text-sm font-medium text-stash-text font-mono">
-                        {tx.amount === null ? '—' : `${tx.amount} ${tx.symbol ?? ''}`}
+                        {tx.amount === null ? '-' : `${tx.amount} ${tx.symbol ?? ''}`}
                       </div>
                       <div className="text-xs text-stash-muted">
                         {new Date(tx.createdAt).toLocaleDateString()}

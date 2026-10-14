@@ -13,7 +13,7 @@ const STEPS = [
   {
     num: "02",
     title: "Unlock Credit",
-    desc: "Receive USDC-denominated Stash Power — up to 75% of your collateral value, instantly.",
+    desc: "Receive USDC-denominated Stash Power - up to 75% of your collateral value, instantly.",
   },
   {
     num: "03",
@@ -61,7 +61,7 @@ export default function HomePage() {
 
             <p className="mt-6 text-lg text-stash-muted max-w-xl leading-relaxed">
               Deposit collateral, unlock USDC credit, and execute trades on Arc
-              Network — without selling a single token.
+              Network - without selling a single token.
             </p>
 
             <div className="mt-10 flex flex-wrap items-center gap-4">
