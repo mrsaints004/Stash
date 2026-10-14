@@ -70,5 +70,8 @@ coverage/
 # Debug
 *.pem
 
+# Temporary docs
+VERCEL-ENV.md
+
 # Claude Code
 .claude/
