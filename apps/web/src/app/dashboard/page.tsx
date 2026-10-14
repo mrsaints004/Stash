@@ -1,7 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useAccount } from "wagmi";
+import { useAccount, useSwitchChain } from "wagmi";
+import { useProtocol } from "@/hooks/useProtocol";
 import { Header } from "@/components/layout/Header";
 import { TokenAmount } from "@/components/common/TokenAmount";
 import { RiskBadge } from "@/components/common/RiskBadge";
@@ -325,7 +326,9 @@ function WalletBalancesCard({
 }
 
 export default function DashboardPage() {
-  const { isConnected } = useAccount();
+  const { isConnected, chainId } = useAccount();
+  const protocol = useProtocol();
+  const { switchChainAsync } = useSwitchChain();
   const {
     isAuthenticated,
     login,
@@ -443,13 +446,16 @@ export default function DashboardPage() {
     );
   }
 
-  if (powerError || positionsError) return <div className="min-h-screen bg-stash-bg"><Header /><main className="mx-auto max-w-4xl p-8"><p role="alert" className="text-stash-red">Position and risk data are unavailable. Refresh when the connection recovers.</p><Link href="/repay" className="mt-4 inline-block text-stash-gold">Repay debt</Link></main></div>;
+  const wrongNetwork = isConnected && protocol.data && chainId !== protocol.data.chainId;
+
+  if (powerError || positionsError) return <div className="min-h-screen bg-stash-bg"><Header /><main className="mx-auto max-w-4xl p-8">{wrongNetwork&&<div className="mb-4 rounded-lg border border-stash-gold/30 bg-stash-gold/10 p-4 flex items-center justify-between"><p className="text-sm text-stash-text">You are connected to the wrong network. Switch to <strong>{protocol.data!.chainName}</strong> to use Stash.</p><button onClick={()=>switchChainAsync({chainId:protocol.data!.chainId})} className="rounded-lg bg-stash-gold text-stash-bg px-4 py-2 text-sm font-medium hover:bg-stash-gold-light transition-colors">Switch Network</button></div>}<p role="alert" className="text-stash-red">Position and risk data are unavailable. Refresh when the connection recovers.</p><Link href="/repay" className="mt-4 inline-block text-stash-gold">Repay debt</Link></main></div>;
 
   return (
     <div className="min-h-screen bg-stash-bg">
       <Header />
 
       <main className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-8">
+        {wrongNetwork&&<div className="mb-6 rounded-lg border border-stash-gold/30 bg-stash-gold/10 p-4 flex items-center justify-between"><p className="text-sm text-stash-text">You are connected to the wrong network. Switch to <strong>{protocol.data!.chainName}</strong> to use Stash.</p><button onClick={()=>switchChainAsync({chainId:protocol.data!.chainId})} className="rounded-lg bg-stash-gold text-stash-bg px-4 py-2 text-sm font-medium hover:bg-stash-gold-light transition-colors">Switch Network</button></div>}
         {/* Header row */}
         <div className="mb-8 flex items-center justify-between">
           <div>
