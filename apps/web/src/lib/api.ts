@@ -17,7 +17,8 @@ api.interceptors.response.use(
   (error) => {
     if (
       error.response?.status === 401 &&
-      typeof window !== "undefined"
+      typeof window !== "undefined" &&
+      !error.config?.url?.includes("/auth/")
     ) {
       localStorage.removeItem(TOKEN_KEY);
           notifySessionChanged();
