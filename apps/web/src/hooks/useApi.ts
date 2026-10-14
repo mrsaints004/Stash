@@ -14,7 +14,7 @@ const TOKEN_KEY = "stash_token";
 export function useApi(token: string | null) {
   const client = useMemo(() => {
     const instance = axios.create({
-      baseURL: process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001",
+      baseURL: typeof window !== "undefined" ? "/api/proxy" : (process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001"),
       timeout: 15_000,
       headers: {
         "Content-Type": "application/json",
