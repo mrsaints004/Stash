@@ -53,7 +53,8 @@ export function WalletAction({ action }: { action:Action }) {
       }
       setStep('preparing');const endpoint=action==='deposit'?'/collateral/prepare-deposit':action==='withdraw'?'/collateral/prepare-withdraw':'/credit/prepare-repay';
       const response=await api.post<{data:Prepared}>(endpoint,action==='repay'?{amount:atomic.toString()}:{assetAddress:asset.address,amount:atomic.toString()});
-      const prepared=response.data.data;intentId=prepared.intentId;
+      const prepared=response.data.data;if(!prepared?.to||!prepared?.intentId)throw new Error('Server returned an invalid response. Try again.');
+      intentId=prepared.intentId;
       const expected=action==='repay'?protocol.data.creditAddress:protocol.data.vaultAddress;
       if(prepared.to.toLowerCase()!==expected.toLowerCase())throw new Error('Prepared transaction has an unexpected destination');
       if(prepared.requiresApproval){

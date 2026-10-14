@@ -7,8 +7,13 @@ import { contractAddress, VAULT_V2_ABI, protocolChain } from '../config/protocol
 const TOKEN_ABI = parseAbi(['function symbol() view returns (string)', 'function name() view returns (string)', 'function decimals() view returns (uint8)']);
 @Injectable()
 export class ProtocolService {
+  private configCache: { data: { chainId: number; chainName: string; vaultAddress: Address; creditAddress: Address; routerAddress: Address; usdc: { address: Address; symbol: string; name: string; decimals: number }; assets: { address: Address; symbol: string; name: string; decimals: number; collateralFactorBps: number; depositsEnabled: boolean; feedAddress: Address; maxAgeSeconds: number }[] }; fetchedAt: number } | null = null;
+  private static readonly CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
   constructor(private readonly config: ConfigService, private readonly blockchain: BlockchainService) {}
   async configuration() {
+    if (this.configCache && Date.now() - this.configCache.fetchedAt < ProtocolService.CACHE_TTL_MS) {
+      return this.configCache.data;
+    }
     const client = this.blockchain.getClient(); const vault = contractAddress(this.config, 'STASH_VAULT_ADDRESS');
     const count = await client.readContract({ address: vault, abi: VAULT_V2_ABI, functionName: 'assetCount' });
     if (count > 16n) throw new Error('Invalid asset registry');
@@ -18,10 +23,12 @@ export class ProtocolService {
       const risk = await client.readContract({ address: vault, abi: VAULT_V2_ABI, functionName: 'assetRisk', args: [address] });
       return { ...await this.token(address), collateralFactorBps: risk[3], depositsEnabled: risk[5], feedAddress: risk[1], maxAgeSeconds: risk[4] };
     }));
-    return { chainId: protocolChain(this.config).id, chainName: protocolChain(this.config).name,
+    const result = { chainId: protocolChain(this.config).id, chainName: protocolChain(this.config).name,
       vaultAddress: vault, creditAddress: contractAddress(this.config, 'STASH_CREDIT_ADDRESS'),
       routerAddress: contractAddress(this.config, 'STASH_ROUTER_ADDRESS'),
       usdc: await this.token(usdc), assets };
+    this.configCache = { data: result, fetchedAt: Date.now() };
+    return result;
   }
   async lendingTerms(wallet?: Address) {
     const client = this.blockchain.getClient();

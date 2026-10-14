@@ -9,5 +9,5 @@ export function useProtocol() {
     const response = await api.get<{ data: ProtocolConfig }>('/protocol/config');
     if (response.data.data.chainId !== config.chains[0].id) throw new Error('Wallet network configuration does not match the Stash API');
     return response.data.data;
-  }, staleTime: 15000, refetchInterval: 30000, retry: 1 });
+  }, staleTime: 5 * 60 * 1000, refetchInterval: 5 * 60 * 1000, retry: 2, retryDelay: 3000 });
 }
