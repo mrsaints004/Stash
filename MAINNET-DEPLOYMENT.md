@@ -75,8 +75,8 @@ forge verify-contract <ADDRESS> <CONTRACT_PATH> --chain-id 5042 --etherscan-api-
 ### 6. Post-Deployment
 
 1. Unpause all contracts
-2. Transfer ownership to Safe + Timelock (when ready)
-3. Configure aggregator routes (when DEX aggregators deploy on Arc)
+2. Configure aggregator routes (see below)
+3. Transfer ownership to Safe + Timelock (when ready)
 
 ## Architecture Notes
 
@@ -86,12 +86,33 @@ Arc's "Capped USDC/USD" feed only exposes `latestAnswer()`. The vault requires `
 
 ### Aggregator Routes
 
-The Router's `borrowAndSwap` requires whitelisted DEX aggregator contracts. Configure with:
+The Router's `borrowAndSwap` requires whitelisted DEX aggregator contracts. LI.FI is the active aggregator on Arc, routing through KyberSwap.
+
+**Current configuration:**
+
+| Setting         | Address                                      |
+|-----------------|----------------------------------------------|
+| LI.FI Diamond   | `0xA4072583658Fae592A3506A42431cb6316a8d40b` |
+| Approved Route  | `approvedRoute[diamond][diamond] = true`     |
+| Allowed Outputs | WETH, cirBTC                                 |
+
+**Commands used to configure:**
 
 ```bash
-cast send <ROUTER> "configureRoute(address,address,bool)" <target> <spender> true \
+ROUTER=0xFB055e2dDbFa92E3bc8e3cCC97D942e256e483bA
+LIFI=0xA4072583658Fae592A3506A42431cb6316a8d40b
+
+cast send $ROUTER "configureRoute(address,address,bool)" $LIFI $LIFI true \
+  --rpc-url https://rpc.mainnet.arc.io --private-key $KEY
+
+cast send $ROUTER "configureOutput(address,bool)" 0x128cC466B61f542da60c70e3aA11c10e19B84EDB true \
+  --rpc-url https://rpc.mainnet.arc.io --private-key $KEY
+
+cast send $ROUTER "configureOutput(address,bool)" 0x171A4217b86A807A64eB94757Db6849fb4bDbAA0 true \
   --rpc-url https://rpc.mainnet.arc.io --private-key $KEY
 ```
+
+Set `ROUTING_PROVIDERS=lifi` in the backend `.env` (0x Protocol does not support Arc).
 
 ## Rollback
 
