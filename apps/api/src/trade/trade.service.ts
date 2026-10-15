@@ -85,8 +85,8 @@ export class TradeService {
     await client.call(call);
     const gas = await client.estimateGas(call); const gasPrice = await client.getGasPrice();
     const intentId = await this.lifecycle.prepare(userId, walletAddress, 'trade', { to: payload.routerAddress, data: payload.calldata }, quote.expiresAt);
-    return { ...payload, intentId, quoteId, chainId: quote.chainId, to: payload.routerAddress, data: payload.calldata, value: '0',
-      requiresApproval: false, gas: gas.toString(), fees: { ...payload.fees, network: { amount: (gas*gasPrice).toString(), native: true } } };
+    return { data: { ...payload, intentId, quoteId, chainId: quote.chainId, to: payload.routerAddress, data: payload.calldata, value: '0',
+      requiresApproval: false, gas: gas.toString(), fees: { ...payload.fees, network: { amount: (gas*gasPrice).toString(), native: true } } } };
   }
   async confirmTrade(userId: string, walletAddress: string, txHash: string, tokenIn: string, tokenOut: string, amountIn: string, _amountOut: string) {
     const args = await this.blockchain.verifyEvent(txHash, walletAddress, contractAddress(this.config, 'STASH_ROUTER_ADDRESS'),
