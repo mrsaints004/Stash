@@ -4,10 +4,12 @@ import { Repository } from 'typeorm';
 import { ConfigService } from '@nestjs/config';
 import { type Address, type Hash } from 'viem';
 import { TransactionIntent } from '../database/entities/transaction-intent.entity';
+import { Transaction } from '../database/entities';
 import { BlockchainService } from '../blockchain/blockchain.service';
 @Injectable()
 export class LifecycleService {
   constructor(@InjectRepository(TransactionIntent) private readonly repo: Repository<TransactionIntent>,
+    @InjectRepository(Transaction) private readonly txRepo: Repository<Transaction>,
     private readonly config: ConfigService, private readonly blockchain: BlockchainService) {}
   async prepare(userId: string, wallet: string, type: string, transaction: { to: string; data: string; value?: string }, expiresAt?: Date) {
     const intent = await this.repo.save(this.repo.create({ userId, walletAddress: wallet.toLowerCase(), type,
@@ -53,7 +55,13 @@ export class LifecycleService {
     const depth=Number(this.config.get<string>('TX_CONFIRMATIONS','2'));
     if (await client.getBlockNumber()<receipt.blockNumber+BigInt(depth-1)) { intent.status='PENDING'; }
     else { intent.status=receipt.status==='success'?'CONFIRMED':'REVERTED'; }
-    await this.repo.save(intent); return intent;
+    await this.repo.save(intent);
+    if (intent.status==='CONFIRMED' && intent.txHash) {
+      const existing = await this.txRepo.findOne({ where: { txHash: intent.txHash, chainId: intent.chainId } });
+      if (!existing) await this.txRepo.save(this.txRepo.create({ userId: intent.userId, txHash: intent.txHash,
+        type: intent.type as Transaction['type'], chainId: intent.chainId, status: 'confirmed', confirmedAt: new Date() }));
+    }
+    return intent;
   }
   async pending() { return this.repo.find({ where: [{ status:'SUBMITTED' },{ status:'PENDING' }], take:100, order:{ createdAt:'ASC' } }); }
   async list(userId: string) { return this.repo.find({where:{userId},order:{createdAt:'DESC'},take:100}); }
