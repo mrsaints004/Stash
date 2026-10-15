@@ -26,7 +26,7 @@ export class RateLimitGuard implements CanActivate, OnModuleDestroy {
     try {
       count = Number(await this.redis.eval(INCREMENT, 1, `stash:rate:${auth ? 'auth' : 'api'}:${request.ip}`, '60'));
     } catch {
-      throw new ServiceUnavailableException('Request protection is unavailable; retry later');
+      return true;
     }
     if (count > (auth ? 20 : 120)) throw new HttpException('Too many requests; retry in one minute', 429);
     return true;

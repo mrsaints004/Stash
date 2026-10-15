@@ -26,7 +26,7 @@ export class ProtocolService {
     const result = { chainId: protocolChain(this.config).id, chainName: protocolChain(this.config).name,
       vaultAddress: vault, creditAddress: contractAddress(this.config, 'STASH_CREDIT_ADDRESS'),
       routerAddress: contractAddress(this.config, 'STASH_ROUTER_ADDRESS'),
-      usdc: await this.token(usdc), assets };
+      usdc: await this.token(usdc), assets: assets.filter(a => a.address.toLowerCase() !== usdc.toLowerCase()) };
     this.configCache = { data: result, fetchedAt: Date.now() };
     return result;
   }
